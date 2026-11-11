@@ -132,6 +132,7 @@ struct CrushTabBar: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(badge > 0 ? "\(title), \(badge) new" : title)
+        .accessibilityIdentifier("tab.\(title.lowercased())")
         .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
     }
 }

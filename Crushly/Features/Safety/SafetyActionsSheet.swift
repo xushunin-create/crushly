@@ -61,5 +61,6 @@ struct SafetyActionsSheet: View {
                 }
             }
         }
+        .closesForReveal()
     }
 }

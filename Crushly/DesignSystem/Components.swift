@@ -229,6 +229,25 @@ struct ErrorBanner: View {
     }
 }
 
+// MARK: - Sheets
+
+/// Apply to the root of every sheet: it closes itself when a Heart Sync reveal needs the screen.
+struct ClosesForReveal: ViewModifier {
+    @Environment(AppState.self) private var state
+    @Environment(\.dismiss) private var dismiss
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { state.modalAppeared() }
+            .onDisappear { state.modalDisappeared() }
+            .onChange(of: state.dismissModalsToken) { _, _ in dismiss() }
+    }
+}
+
+extension View {
+    func closesForReveal() -> some View { modifier(ClosesForReveal()) }
+}
+
 // MARK: - Flow layout for tags
 
 struct FlowLayout: Layout {

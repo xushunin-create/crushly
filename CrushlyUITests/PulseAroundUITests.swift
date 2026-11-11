@@ -85,10 +85,10 @@ final class PulseAroundUITests: XCTestCase {
         enterRadius()
         XCTAssertTrue(person("Mina").waitForExistence(timeout: 5))
 
-        app.buttons["Me"].tap()
+        app.buttons["tab.me"].tap()
         let skip = app.buttons["Skip ahead 30 minutes"]
         skip.reveal(in: app).tap()
-        app.buttons["Around"].tap()
+        app.buttons["tab.around"].tap()
 
         XCTAssertTrue(app.staticTexts["Time's up — you're hidden"].waitForExistence(timeout: 5))
         XCTAssertFalse(person("Mina, 22").exists, "live radar/list is gone once the session expires")

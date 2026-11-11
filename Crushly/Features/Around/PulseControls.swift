@@ -194,6 +194,7 @@ struct StartPulseSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
+        .closesForReveal()
         .task {
             if state.spaces.isEmpty { await state.loadSpaces() }
             availability = state.profile?.availability ?? .either

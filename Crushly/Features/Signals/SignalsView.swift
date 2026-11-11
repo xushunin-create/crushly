@@ -70,16 +70,20 @@ struct SignalsView: View {
                 HStack(spacing: Theme.Space.s) {
                     Button("Explore Around") { state.selectedTab = .around }
                         .buttonStyle(.crush)
-                    Menu {
-                        Button("Not right now") { state.feedback.play(.tap) }
-                        Button("Mute signal alerts for 8 hours") { Task { await mute(hours: 8) } }
-                        Button("Mute signal alerts for 24 hours") { Task { await mute(hours: 24) } }
-                    } label: {
-                        Text("Not Right Now").frame(maxWidth: .infinity, minHeight: 54)
-                            .font(Theme.Typeface.button)
-                            .foregroundStyle(.white)
-                            .overlay(Capsule().stroke(.white.opacity(0.6), lineWidth: 1.5))
-                    }
+                        .accessibilityIdentifier("receipts.explore")
+                    Button("Not Right Now") { withAnimation(Theme.Motion.soft) { state.dismissReceipts() } }
+                        .buttonStyle(.crush(.onInk))
+                        .accessibilityIdentifier("receipts.notNow")
+                }
+                Menu {
+                    Button("Mute for 1 hour") { Task { await state.muteSignalAlerts(hours: 1) } }
+                    Button("Mute for 8 hours") { Task { await state.muteSignalAlerts(hours: 8) } }
+                    Button("Mute for 24 hours") { Task { await state.muteSignalAlerts(hours: 24) } }
+                } label: {
+                    Label("Mute anonymous signal alerts", systemImage: "bell.slash")
+                        .font(Theme.Typeface.subheadline.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.8))
+                        .frame(maxWidth: .infinity, minHeight: Theme.minTap)
                 }
                 if let until = state.prefs.signalsMutedUntil, until > state.now() {
                     Text("Signal alerts muted until \(until.formatted(date: .omitted, time: .shortened)).")
@@ -91,16 +95,17 @@ struct SignalsView: View {
         }
     }
 
+    /// Deliberately coarse, matching the server's 15-minute buckets, so timing can't identify the sender.
     private func receiptText(_ receipt: SignalReceipt) -> String {
-        let time = receipt.receivedBucket.formatted(.relative(presentation: .named))
-        if let space = receipt.spaceName { return "Around \(time) · \(space)" }
-        return "Around \(time)"
-    }
-
-    private func mute(hours: Double) async {
-        var prefs = state.prefs
-        prefs.signalsMutedUntil = state.now().addingTimeInterval(hours * 3600)
-        await state.updatePrefs(prefs)
+        let age = state.now().timeIntervalSince(receipt.receivedBucket)
+        let time: String
+        if age < 15 * 60 { time = "In the last 15 minutes" }
+        else if age < 3600 { time = "Within the last hour" }
+        else if Calendar.current.isDateInToday(receipt.receivedBucket) { time = "Earlier today" }
+        else if Calendar.current.isDateInYesterday(receipt.receivedBucket) { time = "Yesterday" }
+        else { time = "A few days ago" }
+        if let space = receipt.spaceName { return "\(time) · \(space)" }
+        return time
     }
 
     @ViewBuilder private func matchSection(_ title: String, subtitle: String, matches: [Match]) -> some View {

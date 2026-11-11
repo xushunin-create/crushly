@@ -65,7 +65,29 @@ final class AppState {
         set { UserDefaults.standard.set(newValue.map(\.uuidString), forKey: "crushly.revealed") }
     }
 
+    /// Receipts set aside with "Not Right Now". Stored on this device only; the server is unaffected.
+    private var dismissedReceiptIDs: Set<UUID> {
+        get { Set((UserDefaults.standard.stringArray(forKey: "crushly.dismissedReceipts") ?? []).compactMap(UUID.init)) }
+        set { UserDefaults.standard.set(newValue.map(\.uuidString), forKey: "crushly.dismissedReceipts") }
+    }
+
+    func dismissReceipts() {
+        dismissedReceiptIDs.formUnion(receipts.map(\.id))
+        receipts = []
+        feedback.play(.tap)
+    }
+
+    func muteSignalAlerts(hours: Double) async {
+        var newPrefs = prefs
+        newPrefs.signalsMutedUntil = now().addingTimeInterval(hours * 3600)
+        await updatePrefs(newPrefs)
+    }
+
     private var pollTask: Task<Void, Never>?
+    private var modalDepth = 0
+    private var pendingReveal: Match?
+    /// Incremented to ask every open sheet to close (observed by `.closesForReveal()`).
+    private(set) var dismissModalsToken = 0
     private var expiryTask: Task<Void, Never>?
     /// Set when a session ran out on its own; cleared when the user starts a new one or dismisses it.
     var sessionExpiredNotice = false
@@ -116,6 +138,8 @@ final class AppState {
             return
         }
         await reloadAccount()
+        // The scene's first .active event can arrive before bootstrap finishes, so start refreshing here too.
+        if phase != .signedOut { startPolling() }
     }
 
     /// Re-reads everything from the backend; called on launch, foreground, reconnect and after mutations.
@@ -215,7 +239,8 @@ final class AppState {
             async let sentCall = backend.sentSignals()
             async let matchesCall = backend.matches()
             let (newReceipts, newSent, newMatches) = try await (receiptsCall, sentCall, matchesCall)
-            receipts = newReceipts
+            let dismissed = dismissedReceiptIDs
+            receipts = newReceipts.filter { !dismissed.contains($0.id) }
             sentSignals = newSent
             detectNewMatches(newMatches)
             matches = newMatches
@@ -250,10 +275,33 @@ final class AppState {
         revealedMatchIDs = seen
     }
 
+    /// iOS can't show the full-screen reveal on top of an open sheet, so open sheets are asked to close
+    /// first and the reveal follows once the last one has gone.
     private func present(_ match: Match) {
+        if modalDepth > 0 {
+            pendingReveal = match
+            dismissModalsToken += 1
+        } else {
+            show(match)
+        }
+    }
+
+    private func show(_ match: Match) {
         revealMatch = match
         feedback.play(.heartSync)
         Task { await backend.track(.matchViewed) }
+    }
+
+    func modalAppeared() { modalDepth += 1 }
+
+    func modalDisappeared() {
+        modalDepth = max(0, modalDepth - 1)
+        guard modalDepth == 0, let match = pendingReveal else { return }
+        pendingReveal = nil
+        Task {
+            try? await Task.sleep(for: .milliseconds(350))
+            show(match)
+        }
     }
 
     // MARK: Errors

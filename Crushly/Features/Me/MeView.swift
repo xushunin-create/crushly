@@ -126,6 +126,7 @@ struct ShieldSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
+        .closesForReveal()
     }
 
     private func label(_ minutes: Int?) -> String {

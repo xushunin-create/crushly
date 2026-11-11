@@ -35,6 +35,7 @@ struct PersonProfileView: View {
                     .presentationDetents([.medium, .large])
             }
         }
+        .closesForReveal()
     }
 
     private var identity: some View {
@@ -89,6 +90,15 @@ struct PersonProfileView: View {
     }
 }
 
+/// Keeps the "sent" heart vivid; the default styles dim disabled buttons, which reads as broken here.
+private struct UndimmedButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .animation(Theme.Motion.snappy, value: configuration.isPressed)
+    }
+}
+
 /// The central Send Heart Signal control: heartbeat, expanding signal rings, sound + haptics on success.
 struct HeartSignalButton: View {
     let person: PublicProfile
@@ -114,10 +124,11 @@ struct HeartSignalButton: View {
     var body: some View {
         VStack(spacing: Theme.Space.l) {
             Button(action: send) { heart }
-                .buttonStyle(.plain)
+                .buttonStyle(UndimmedButtonStyle())
                 .disabled(availability != .canSend || sending)
                 .accessibilityLabel(accessibilityLabel)
                 .accessibilityHint(availability == .canSend ? "Sends an anonymous Heart Signal" : "")
+                .accessibilityIdentifier("signal.send")
 
             Text(caption)
                 .font(Theme.Typeface.callout)
@@ -125,6 +136,7 @@ struct HeartSignalButton: View {
                 .multilineTextAlignment(.center)
                 .frame(minHeight: 44)
                 .animation(Theme.Motion.soft, value: caption)
+                .accessibilityIdentifier("signal.caption")
         }
         .onAppear { beating = true }
     }

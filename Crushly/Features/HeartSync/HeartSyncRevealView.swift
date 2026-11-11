@@ -44,6 +44,7 @@ struct HeartSyncRevealView: View {
                 .foregroundStyle(.white)
                 .accessibilityElement(children: .combine)
                 .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("reveal.headline")
 
                 Spacer(minLength: Theme.Space.l)
 
@@ -54,13 +55,16 @@ struct HeartSyncRevealView: View {
                         if isSync && state.pulseState == .live {
                             Button { showFind = true } label: { Label("Find Each Other Now", systemImage: "figure.walk") }
                                 .buttonStyle(.crush)
+                                .accessibilityIdentifier("reveal.find")
                         }
                         AsyncButton {
                             await state.setConnection(match, status: .findLater)
                             withAnimation(Theme.Motion.soft) { savedForLater = true }
                         } label: { Text("Connect Later") }
+                            .accessibilityIdentifier("reveal.later")
                             .buttonStyle(.crush(.onInk))
                         Button("Stay in the Moment") { dismiss() }
+                            .accessibilityIdentifier("reveal.stay")
                             .font(Theme.Typeface.button)
                             .foregroundStyle(.white.opacity(0.8))
                             .frame(minHeight: Theme.minTap)
