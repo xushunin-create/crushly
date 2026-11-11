@@ -1,4 +1,3 @@
-import Foundation
 import AVFoundation
 import UIKit
 
@@ -90,10 +89,4 @@ final class PulseFeedbackManager {
         generator.prepare()
         generator.notificationOccurred(.success)
     }
-}//
-//  PulseFeedbackManager.swift
-//  pulse-b
-//
-//  Created by shuning xu on 10/6/26.
-//
-
+}
