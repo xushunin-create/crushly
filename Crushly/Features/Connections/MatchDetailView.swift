@@ -123,8 +123,11 @@ struct MatchDetailView: View {
         }
     }
 
+    /// Meeting now only makes sense for a Heart Sync (you were both there). For Crossed Hearts the other person
+    /// has moved on, and offering it would hint at whether they're active.
     private func isSyncAndLive(_ match: Match) -> Bool {
-        state.pulseState == .live && !(match.openFind.map { $0.status == .pending || $0.status == .accepted } ?? false)
+        match.kind == .heartSync && state.pulseState == .live
+            && !(match.openFind.map { $0.status == .pending || $0.status == .accepted } ?? false)
     }
 
     private func latest(_ match: Match, _ kind: ConnectionActionKind) -> ConnectionAction? {

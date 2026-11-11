@@ -218,6 +218,7 @@ final class DemoBackend: CrushlyBackend {
                                        confirmBy: date.addingTimeInterval(Double(rules.connectionConfirmHours) * 3600))
             )
             matchesByID[match.id] = match
+            scheduleAfterMatch(match.id, other: other)
             signals[reciprocalIndex].status = .matched
             signals[reciprocalIndex].matchID = match.id
             signals[signals.count - 1].status = .matched
@@ -229,6 +230,35 @@ final class DemoBackend: CrushlyBackend {
             schedule(at: date.addingTimeInterval(reply)) { [weak self] in self?.scriptedSignal(from: recipient) }
         }
         return .sent(remaining: remaining)
+    }
+
+    private func scheduleAfterMatch(_ matchID: UUID, other: UUID) {
+        for (delay, action) in people[other]?.script.afterMatch ?? [] {
+            schedule(at: now().addingTimeInterval(delay)) { [weak self] in
+                guard let self, var match = self.matchesByID[matchID], !self.isBlockedBetween(self.myID, other),
+                      [.pendingConfirmation, .metTonight, .findLater].contains(match.connection.status) else { return }
+                let date = self.now()
+                switch action {
+                case .suggest(let kind, let detail):
+                    guard !match.actions.contains(where: { $0.kind == kind && $0.status == .pending }) else { return }
+                    match.actions.append(ConnectionAction(id: UUID(), actorID: other, kind: kind, detail: detail,
+                                                          status: .pending, createdAt: date))
+                case .requestFind(let point):
+                    guard self.hasSession(self.myID, at: date), self.hasSession(other, at: date), !self.isShielded(self.myID),
+                          match.find.map({ $0.status != .pending && $0.status != .accepted }) ?? true else { return }
+                    match.find = FindRequest(id: UUID(), requesterID: other, status: .pending, meetingPoint: point,
+                                             respondBy: date.addingTimeInterval(Double(self.rules.findRequestTimeoutMinutes) * 60))
+                }
+                self.matchesByID[matchID] = match
+            }
+        }
+    }
+
+    /// A paused or live (not ended, not expired) session — the server's condition for keeping a meet-up open.
+    private func hasSession(_ user: UUID, at date: Date) -> Bool {
+        if user == myID { return session.map { $0.endedAt == nil && $0.expiresAt > date } ?? false }
+        guard let person = people[user], person.script.spaceID != nil, let minutes = person.script.sessionMinutes else { return false }
+        return startedAt.addingTimeInterval(minutes * 60) > date
     }
 
     private func expireLifecycle() {
@@ -248,7 +278,13 @@ final class DemoBackend: CrushlyBackend {
                 find.status = .timedOut
                 match.find = find
             } else if var find = match.find, find.status == .accepted, (find.activeUntil ?? .distantFuture) <= date {
-                find.status = .timedOut
+                find.status = .completed   // matches the server's tick
+                match.find = find
+            }
+            // Either person leaving Pulse ends an open meet-up (server: crushly_tick / end_open_finds).
+            if var find = match.find, find.status == .pending || find.status == .accepted,
+               !hasSession(myID, at: date) || !hasSession(match.other, at: date) {
+                find.status = .cancelled
                 match.find = find
             }
             matchesByID[id] = match
@@ -426,6 +462,7 @@ final class DemoBackend: CrushlyBackend {
         try await pause()
         session?.endedAt = now()
         session = nil
+        expireLifecycle()
     }
 
     func aroundProfiles() async throws -> [PublicProfile] {

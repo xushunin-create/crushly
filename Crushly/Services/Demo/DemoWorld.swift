@@ -41,7 +41,14 @@ enum DemoWorld {
         /// Accepts your connection actions / meeting requests after this delay. nil = never answers.
         var acceptsAfter: TimeInterval? = 4
         var instagram: String?
+        /// What they do on their own after you match.
+        var afterMatch: [(delay: TimeInterval, action: InboundAction)] = []
         var note: String
+    }
+
+    enum InboundAction {
+        case suggest(ConnectionActionKind, detail: String?)
+        case requestFind(meetingPoint: String)
     }
 
     struct Person {
@@ -77,12 +84,14 @@ enum DemoWorld {
                    vibes: ["Quietly funny", "Planner"], prompt: 1, answer: "The third floor of Leavey, pretending to study.",
                    intention: .somethingCasual, availability: .either, avatar: "gamecontroller.fill|purple", band: "100–250 m",
                    script: Script(spaceID: village, replyAfter: 20, instagram: "@alex.pixels",
-                                  note: "Signals you back about 20 seconds after you signal him.")),
+                                  afterMatch: [(6, .requestFind(meetingPoint: "USC Village fountain"))],
+                                  note: "Signals you back ~20 s after you signal him, then asks to meet.")),
             person(3, "Jamie", 23, pronouns: "they/them", gender: "Non-binary", interests: ["Photography", "Concerts", "Hiking"],
                    vibes: ["Spontaneous", "Golden retriever energy"], prompt: 2, answer: "Golden hour on the Doheny steps.",
                    intention: .figuringItOut, availability: .connectLater, avatar: "camera.fill|blue", band: "250–500 m",
                    script: Script(spaceID: village, sessionMinutes: 3, signalsYouAfter: 30, instagram: "@jamie.frames",
-                                  note: "Signals you, then leaves after 3 minutes. Signal them later for Crossed Hearts.")),
+                                  afterMatch: [(5, .suggest(.coffee, detail: nil))],
+                                  note: "Signals you, leaves after 3 min. Signal them later for Crossed Hearts; they'll suggest coffee.")),
             person(4, "Noah", 22, pronouns: "he/him", gender: "Man", interests: ["Startups", "Movies", "Tennis"],
                    vibes: ["Main character", "Early riser"], prompt: 3, answer: "Someone who texts back the same day.",
                    intention: .newFriends, availability: .meetNow, avatar: "sparkles|orange", band: "100–250 m",
