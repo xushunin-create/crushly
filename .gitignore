@@ -15,3 +15,8 @@ DerivedData/
 # Swift Package Manager
 .build/
 .swiftpm/
+
+# Local secrets
+Crushly/Resources/Secrets.plist
+supabase/.env
+supabase/.temp/
