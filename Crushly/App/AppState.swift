@@ -66,6 +66,9 @@ final class AppState {
     }
 
     private var pollTask: Task<Void, Never>?
+    private var expiryTask: Task<Void, Never>?
+    /// Set when a session ran out on its own; cleared when the user starts a new one or dismisses it.
+    var sessionExpiredNotice = false
 
     init(config: AppConfig, backend: CrushlyBackend, demo: DemoBackend?) {
         self.config = config
@@ -134,17 +137,38 @@ final class AppState {
         email = snapshot.email
         profile = snapshot.profile
         account = snapshot.account
+        clockSkew = snapshot.serverNow.timeIntervalSinceNow
+        // A session that disappeared (or came back expired) without the user ending it ran out of time.
+        if let previous = pulse, previous.expiresAt <= now(),
+           snapshot.pulse == nil || snapshot.pulse?.state(at: now()) == .expired {
+            sessionExpiredNotice = true
+        }
         pulse = snapshot.pulse
         shield = snapshot.shield
         prefs = snapshot.prefs
         rules = snapshot.rules
-        clockSkew = snapshot.serverNow.timeIntervalSinceNow
+        scheduleExpiryCheck()
         if !account.hasAcceptedCurrentTerms {
             phase = .needsTerms
         } else if profile?.isComplete != true {
             phase = .needsProfile
         } else {
             phase = .ready
+        }
+    }
+
+    /// Re-reads server state the moment the session or shield should end, so visibility changes on time
+    /// instead of on the next poll. The server remains the authority either way.
+    private func scheduleExpiryCheck() {
+        expiryTask?.cancel()
+        let deadlines = [pulse?.endedAt == nil ? pulse?.expiresAt : nil, shield?.activeUntil].compactMap { $0 }
+        guard let next = deadlines.filter({ $0 > now() }).min() else { return }
+        let delay = next.timeIntervalSince(now()) + 0.5
+        expiryTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, let self else { return }
+            self.around = []
+            await self.reloadAccount()
         }
     }
 
@@ -317,6 +341,7 @@ final class AppState {
     func startPulse(spaceID: UUID, durationMinutes: Int?, untilEventEnd: Bool, availability: Availability) async throws {
         pulse = try await backend.startPulse(spaceID: spaceID, durationMinutes: durationMinutes,
                                              untilEventEnd: untilEventEnd, availability: availability)
+        sessionExpiredNotice = false
         feedback.play(.pulseOn)
         await backend.track(.pulseStarted)
         await reloadAccount()

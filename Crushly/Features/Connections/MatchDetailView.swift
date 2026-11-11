@@ -178,7 +178,7 @@ struct MatchDetailView: View {
             HStack(spacing: Theme.Space.s) {
                 AsyncButton { await state.respond(to: action, accept: true) } label: { Text("Accept") }.buttonStyle(.crush)
                 AsyncButton { await state.respond(to: action, accept: false) } label: { Text("Decline") }
-                    .buttonStyle(.crush(.secondary)).colorScheme(.dark)
+                    .buttonStyle(.crush(.onInk))
             }
         }
         .inkCard()
@@ -265,14 +265,14 @@ struct FindStatusCard: View {
                 if request.status == .pending && !mine {
                     AsyncButton { await state.respondFind(request, accept: true) } label: { Text("Accept") }.buttonStyle(.crush)
                     AsyncButton { await state.respondFind(request, accept: false) } label: { Text("Decline") }
-                        .buttonStyle(.crush(.secondary)).colorScheme(.dark)
+                        .buttonStyle(.crush(.onInk))
                 } else if request.status == .accepted {
                     AsyncButton { await state.completeFind(request) } label: { Text("We found each other") }.buttonStyle(.crush)
                     AsyncButton { await state.cancelFind(request) } label: { Text("Cancel") }
-                        .buttonStyle(.crush(.secondary)).colorScheme(.dark)
+                        .buttonStyle(.crush(.onInk))
                 } else {
                     AsyncButton { await state.cancelFind(request) } label: { Text("Cancel request") }
-                        .buttonStyle(.crush(.secondary)).colorScheme(.dark)
+                        .buttonStyle(.crush(.onInk))
                 }
             }
         }

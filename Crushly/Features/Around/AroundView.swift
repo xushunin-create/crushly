@@ -121,14 +121,7 @@ struct PersonRow: View {
                     Text("\(person.firstName), \(person.age)").font(Theme.Typeface.headline)
                     VerificationBadge(status: person.photoReviewStatus)
                 }
-                HStack(spacing: 6) {
-                    Label(person.availability.title, systemImage: person.availability.symbol)
-                    if let band = person.simulatedDistanceBand {
-                        Text("· \(band) (simulated)")
-                    } else if let space = person.spaceName {
-                        Text("· \(space)")
-                    }
-                }
+                Label(availabilityLine, systemImage: person.availability.symbol)
                 .font(Theme.Typeface.caption)
                 .foregroundStyle(Theme.Palette.inkSoft)
                 if !person.vibeTags.isEmpty {
@@ -143,6 +136,12 @@ struct PersonRow: View {
         .crushCard(padding: Theme.Space.m)
         .accessibilityElement(children: .combine)
         .accessibilityHint("Opens profile")
+    }
+
+    private var availabilityLine: String {
+        if let band = person.simulatedDistanceBand { return "\(person.availability.title) · \(band) (simulated)" }
+        if let space = person.spaceName { return "\(person.availability.title) · \(space)" }
+        return person.availability.title
     }
 }
 

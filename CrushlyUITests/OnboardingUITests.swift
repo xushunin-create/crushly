@@ -43,19 +43,20 @@ final class OnboardingUITests: XCTestCase {
         XCTAssertTrue(firstName.waitForExistence(timeout: 5))
         firstName.tap()
         firstName.typeText("Avery")
-        app.buttons["profile.samplePhoto"].tap()
-        app.buttons["profile.save"].tapAfterScrolling(in: app)
-        XCTAssertTrue(app.staticTexts["Still needed"].waitForExistence(timeout: 3), "missing fields are explained")
-        app.swipeDown(velocity: .fast)
-        app.swipeDown(velocity: .fast)
+        app.buttons["keyboard.done"].tap()
+        app.buttons["profile.samplePhoto"].reveal(in: app).tap()
+        app.buttons["profile.save"].reveal(in: app).tap()
+        XCTAssertTrue(app.staticTexts["Still needed"].waitForExistence(timeout: 5), "missing fields are explained")
+
         for interest in ["Coffee", "Design", "Film"] {
-            app.buttons[interest].tapAfterScrolling(in: app)
+            app.buttons[interest].reveal(in: app).tap()
         }
         let answer = app.textFields["profile.promptAnswer"]
-        answer.tapAfterScrolling(in: app)
+        answer.reveal(in: app).tap()
         answer.typeText("Tacos after midnight.")
+        app.buttons["keyboard.done"].tap()
         snapshot(app, "profile-filled")
-        app.buttons["profile.save"].tapAfterScrolling(in: app)
+        app.buttons["profile.save"].reveal(in: app).tap()
 
         // Lands on Around, not visible until Pulse is on.
         XCTAssertTrue(app.staticTexts["Your radius"].waitForExistence(timeout: 5))
@@ -83,12 +84,39 @@ extension XCUIElement {
         typeText(text)
     }
 
+    /// Scrolls with small drags (from the screen edge, away from buttons) until the element sits in the
+    /// middle band of the screen — clear of the navigation bar, tab bar and keyboard — then returns it.
+    @discardableResult
+    func reveal(in app: XCUIApplication, attempts: Int = 14) -> XCUIElement {
+        let height = app.frame.height
+        for _ in 0..<attempts {
+            var towardTop = true
+            if exists {
+                let f = frame
+                if isHittable, f.minY >= 120, f.maxY <= height - 90 { return self }
+                towardTop = f.minY >= 120   // below the safe band (or covered) → scroll content up
+            }
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: towardTop ? 0.62 : 0.38))
+            let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: towardTop ? 0.42 : 0.58))
+            start.press(forDuration: 0.05, thenDragTo: end)
+        }
+        XCTAssertTrue(exists && isHittable, "\(self) not reachable")
+        return self
+    }
+
     /// Scrolls until the element is hittable, then taps it.
     func tapAfterScrolling(in app: XCUIApplication, direction: Direction = .up, attempts: Int = 8) {
         var remaining = attempts
         while !(exists && isHittable) && remaining > 0 {
             direction == .up ? app.swipeUp(velocity: .slow) : app.swipeDown(velocity: .slow)
             remaining -= 1
+        }
+        // Keep it clear of the navigation bar, where taps land on the bar instead.
+        var nudges = 3
+        while exists && frame.minY < 140 && nudges > 0 {
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4))
+            start.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)))
+            nudges -= 1
         }
         XCTAssertTrue(exists && isHittable, "\(self) not reachable")
         tap()

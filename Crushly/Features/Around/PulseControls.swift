@@ -5,12 +5,24 @@ import SwiftUI
 struct PulseStatusCard: View {
     @Environment(AppState.self) private var state
     @Binding var showStart: Bool
+    @State private var showShield = false
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let now = context.date.addingTimeInterval(state.clockSkew)
             content(now: now)
         }
+        .sheet(isPresented: $showShield) { ShieldSheet().presentationDetents([.medium]) }
+    }
+
+    private var shieldShortcut: some View {
+        Button { showShield = true } label: {
+            Label("Protect My Heart", systemImage: "shield.lefthalf.filled")
+                .font(Theme.Typeface.subheadline.weight(.bold))
+                .foregroundStyle(.white.opacity(0.85))
+                .frame(maxWidth: .infinity, minHeight: Theme.minTap)
+        }
+        .accessibilityHint("Hides you immediately and ends your session")
     }
 
     @ViewBuilder private func content(now: Date) -> some View {
@@ -18,21 +30,23 @@ struct PulseStatusCard: View {
             card(tint: Theme.Palette.plum, icon: "shield.lefthalf.filled", eyebrow: "Protect My Heart",
                  title: "You're hidden", detail: shieldDetail(now: now)) {
                 AsyncButton { await state.perform { try await state.exitShield() } } label: { Text("Leave Protect My Heart") }
-                    .buttonStyle(.crush(.secondary))
-                    .colorScheme(.dark)
+                    .buttonStyle(.crush(.onInk))
             }
         } else if let session = state.pulse {
             switch session.state(at: now) {
             case .live:
                 card(tint: Theme.Palette.live, icon: "dot.radiowaves.left.and.right", eyebrow: "Visible",
                      title: state.currentSpace?.name ?? "Pulse is live",
-                     detail: "\(format(session.remaining(at: now))) left · \(state.signalsRemaining) of \(state.rules.signalsPerSession) signals") {
+                     detail: "\(format(session.remaining(at: now))) left · \(session.availability.title) · \(state.signalsRemaining) of \(state.rules.signalsPerSession) signals left") {
                     HStack(spacing: Theme.Space.s) {
                         AsyncButton { await state.perform { try await state.pausePulse() } } label: { Label("Pause", systemImage: "pause.fill") }
-                            .buttonStyle(.crush(.secondary)).colorScheme(.dark)
+                            .buttonStyle(.crush(.onInk))
+                            .accessibilityIdentifier("pulse.pause")
                         AsyncButton { await state.perform { try await state.endPulse() } } label: { Text("Turn off") }
-                            .buttonStyle(.crush(.secondary)).colorScheme(.dark)
+                            .buttonStyle(.crush(.onInk))
+                            .accessibilityIdentifier("pulse.off")
                     }
+                    shieldShortcut
                 }
             case .paused:
                 card(tint: Theme.Palette.amber, icon: "pause.circle.fill", eyebrow: "Paused · hidden",
@@ -41,15 +55,27 @@ struct PulseStatusCard: View {
                     HStack(spacing: Theme.Space.s) {
                         AsyncButton { await state.perform { try await state.resumePulse() } } label: { Label("Resume", systemImage: "play.fill") }
                             .buttonStyle(.crush)
+                            .accessibilityIdentifier("pulse.resume")
                         AsyncButton { await state.perform { try await state.endPulse() } } label: { Text("Turn off") }
-                            .buttonStyle(.crush(.secondary)).colorScheme(.dark)
+                            .buttonStyle(.crush(.onInk))
                     }
+                    shieldShortcut
                 }
             case .expired, .ended:
-                offCard(title: "Your session ended", detail: "You're no longer visible. Start a new session whenever you like.")
+                expiredCard
             }
+        } else if state.sessionExpiredNotice {
+            expiredCard
         } else {
             offCard(title: "You're not visible", detail: "Only people who enter the radius can see each other.")
+        }
+    }
+
+    private var expiredCard: some View {
+        card(tint: Theme.Palette.amberSoft, icon: "clock.badge.xmark", eyebrow: "Session ended", title: "Time's up — you're hidden",
+             detail: "Your Pulse ran out, so no one can see you. Signals you sent stay valid for \(state.rules.signalValidityHours) hours.") {
+            Button { showStart = true } label: { Label("Enter the Radius again", systemImage: "heart.fill") }
+                .buttonStyle(.crush)
         }
     }
 
@@ -57,6 +83,7 @@ struct PulseStatusCard: View {
         card(tint: .white.opacity(0.6), icon: "eye.slash", eyebrow: "Off", title: title, detail: detail) {
             Button { showStart = true } label: { Label("Enter the Radius", systemImage: "heart.fill") }
                 .buttonStyle(.crush)
+                .accessibilityIdentifier("pulse.start")
         }
     }
 
@@ -113,6 +140,7 @@ struct StartPulseSheet: View {
                         ForEach(state.spaces) { space in spaceRow(space) }
                         HStack {
                             TextField("Event code", text: $code)
+                                .accessibilityIdentifier("pulse.code")
                                 .textInputAutocapitalization(.characters)
                                 .autocorrectionDisabled()
                                 .padding(.horizontal, Theme.Space.l)
@@ -156,6 +184,7 @@ struct StartPulseSheet: View {
 
                     AsyncButton { await start() } label: { Label("Enter the Radius", systemImage: "heart.fill") }
                         .buttonStyle(.crush)
+                        .accessibilityIdentifier("pulse.confirmStart")
                         .disabled(spaceID == nil)
                 }
                 .padding(Theme.Space.gutter)

@@ -59,8 +59,7 @@ struct HeartSyncRevealView: View {
                             await state.setConnection(match, status: .findLater)
                             withAnimation(Theme.Motion.soft) { savedForLater = true }
                         } label: { Text("Connect Later") }
-                            .buttonStyle(.crush(.secondary))
-                            .colorScheme(.dark)
+                            .buttonStyle(.crush(.onInk))
                         Button("Stay in the Moment") { dismiss() }
                             .font(Theme.Typeface.button)
                             .foregroundStyle(.white.opacity(0.8))

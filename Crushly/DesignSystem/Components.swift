@@ -3,7 +3,8 @@ import SwiftUI
 // MARK: - Buttons
 
 struct CrushButtonStyle: ButtonStyle {
-    enum Kind { case primary, secondary, ink, quiet, destructive }
+    /// `onInk` is the outline style for dark (ink) cards.
+    enum Kind { case primary, secondary, onInk, ink, quiet, destructive }
     var kind: Kind = .primary
     @Environment(\.isEnabled) private var isEnabled
 
@@ -15,7 +16,7 @@ struct CrushButtonStyle: ButtonStyle {
             .padding(.horizontal, Theme.Space.l)
             .foregroundStyle(foreground)
             .background(background, in: Capsule())
-            .overlay(Capsule().stroke(border, lineWidth: kind == .secondary ? 1.5 : 0))
+            .overlay(Capsule().stroke(border, lineWidth: kind == .secondary || kind == .onInk ? 1.5 : 0))
             .opacity(isEnabled ? 1 : 0.45)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(Theme.Motion.snappy, value: configuration.isPressed)
@@ -24,7 +25,7 @@ struct CrushButtonStyle: ButtonStyle {
 
     private var foreground: Color {
         switch kind {
-        case .primary, .ink: .white
+        case .primary, .ink, .onInk: .white
         case .secondary, .quiet: Theme.Palette.ink
         case .destructive: Theme.Palette.danger
         }
@@ -35,12 +36,19 @@ struct CrushButtonStyle: ButtonStyle {
         case .primary: Theme.Palette.crush
         case .ink: Theme.Palette.ink
         case .secondary: .clear
+        case .onInk: .white.opacity(0.08)
         case .quiet: Theme.Palette.ink.opacity(0.06)
         case .destructive: Theme.Palette.danger.opacity(0.09)
         }
     }
 
-    private var border: Color { kind == .secondary ? Theme.Palette.ink.opacity(0.85) : .clear }
+    private var border: Color {
+        switch kind {
+        case .secondary: Theme.Palette.ink.opacity(0.85)
+        case .onInk: .white.opacity(0.7)
+        default: .clear
+        }
+    }
 }
 
 extension ButtonStyle where Self == CrushButtonStyle {
