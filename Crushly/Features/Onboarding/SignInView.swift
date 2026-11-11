@@ -65,6 +65,7 @@ struct SignInView: View {
                 .background(Theme.Palette.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.s))
                 .overlay(RoundedRectangle(cornerRadius: Theme.Radius.s).stroke(Theme.Palette.hairline))
                 .accessibilityLabel("USC email address")
+                .accessibilityIdentifier("signin.email")
 
             if !email.isEmpty, email.contains("@"), !state.rules.isAllowedEmail(email) {
                 Label("Use your @usc.edu address.", systemImage: "info.circle")
@@ -74,6 +75,7 @@ struct SignInView: View {
 
             AsyncButton { await sendCode() } label: { Text("Email me a code") }
                 .buttonStyle(.crush)
+                .accessibilityIdentifier("signin.sendCode")
                 .disabled(!state.rules.isAllowedEmail(email))
         }
     }
@@ -99,9 +101,11 @@ struct SignInView: View {
                 .overlay(RoundedRectangle(cornerRadius: Theme.Radius.s).stroke(Theme.Palette.hairline))
                 .onChange(of: code) { _, new in code = String(new.filter(\.isNumber).prefix(6)) }
                 .accessibilityLabel("Six digit code")
+                .accessibilityIdentifier("signin.code")
 
             AsyncButton { await verify(sentTo) } label: { Text("Verify and continue") }
                 .buttonStyle(.crush)
+                .accessibilityIdentifier("signin.verify")
                 .disabled(code.count != 6)
 
             HStack {

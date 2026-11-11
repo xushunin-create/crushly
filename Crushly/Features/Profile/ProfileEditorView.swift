@@ -78,6 +78,7 @@ struct ProfileEditorView: View {
                 }
                 .buttonStyle(.crush)
                 .disabled(uploading > 0)
+                .accessibilityIdentifier("profile.save")
             }
             .padding(Theme.Space.gutter)
             .padding(.bottom, Theme.Space.xxl)
@@ -130,6 +131,14 @@ struct ProfileEditorView: View {
                     }
                 }
             }
+            if state.config.isDemo, draft.wrappedValue.photoPaths.count < ProfileRules.maxPhotos {
+                Button { Task { await uploadSample() } } label: {
+                    Label("Use a sample photo (demo)", systemImage: "testtube.2")
+                }
+                .font(Theme.Typeface.subheadline.weight(.semibold))
+                .frame(minHeight: Theme.minTap)
+                .accessibilityIdentifier("profile.samplePhoto")
+            }
             Text("New photos are reviewed before they get a verified badge. Rejected photos are hidden from others.")
                 .font(Theme.Typeface.footnote).foregroundStyle(Theme.Palette.inkSoft)
         }
@@ -140,6 +149,7 @@ struct ProfileEditorView: View {
             Eyebrow(text: "Basics")
             field("First name", text: draft.firstName)
                 .textContentType(.givenName)
+                .accessibilityIdentifier("profile.firstName")
             Stepper(value: draft.age, in: 18...99) {
                 HStack {
                     Text("Age").font(Theme.Typeface.callout.weight(.semibold))
@@ -227,6 +237,7 @@ struct ProfileEditorView: View {
                 .frame(minHeight: Theme.minTap)
             }
             TextField("Your answer", text: draft.promptAnswer, axis: .vertical)
+                .accessibilityIdentifier("profile.promptAnswer")
                 .lineLimit(2...4)
                 .font(Theme.Typeface.body)
                 .padding(Theme.Space.l)
@@ -310,6 +321,28 @@ struct ProfileEditorView: View {
             } catch {
                 state.handle(error)
             }
+        }
+    }
+
+    /// Demo-only: uploads a generated image so the flow can be exercised without the system photo picker.
+    private func uploadSample() async {
+        let size = CGSize(width: 600, height: 600)
+        let image = UIGraphicsImageRenderer(size: size).image { context in
+            let colors = [UIColor(Theme.Palette.crush).cgColor, UIColor(Theme.Palette.plum).cgColor] as CFArray
+            if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 1]) {
+                context.cgContext.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: 600, y: 600), options: [])
+            }
+            let symbol = UIImage(systemName: "heart.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal)
+            symbol?.draw(in: CGRect(x: 200, y: 210, width: 200, height: 180))
+        }
+        guard let data = image.jpegData(compressionQuality: 0.8) else { return }
+        uploading += 1
+        defer { uploading -= 1 }
+        do {
+            let path = try await state.backend.uploadPhoto(data)
+            draft?.photoPaths.append(path)
+        } catch {
+            state.handle(error)
         }
     }
 

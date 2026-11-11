@@ -23,11 +23,11 @@ struct TermsView: View {
                 .crushCard()
 
                 VStack(spacing: 0) {
-                    check($isAdult, "I'm 18 or older", detail: "This is a declaration, not age verification.")
+                    check($isAdult, "I'm 18 or older", detail: "This is a declaration, not age verification.", id: "terms.age")
                     Divider().padding(.leading, 52)
-                    check($acceptsTerms, "I accept the Terms of Service", link: .terms)
+                    check($acceptsTerms, "I accept the Terms of Service", link: .terms, id: "terms.tos")
                     Divider().padding(.leading, 52)
-                    check($acceptsPrivacy, "I accept the Privacy Policy", link: .privacy)
+                    check($acceptsPrivacy, "I accept the Privacy Policy", link: .privacy, id: "terms.privacy")
                 }
                 .crushCard(padding: Theme.Space.s)
 
@@ -35,6 +35,7 @@ struct TermsView: View {
                     await state.perform { try await state.acceptTerms() }
                 } label: { Text("Continue") }
                     .buttonStyle(.crush)
+                    .accessibilityIdentifier("terms.continue")
                     .disabled(!(isAdult && acceptsTerms && acceptsPrivacy))
 
                 Button("Sign out") { Task { await state.signOut() } }
@@ -56,7 +57,7 @@ struct TermsView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private func check(_ value: Binding<Bool>, _ title: String, detail: String? = nil, link: LegalDoc? = nil) -> some View {
+    private func check(_ value: Binding<Bool>, _ title: String, detail: String? = nil, link: LegalDoc? = nil, id: String) -> some View {
         HStack(spacing: Theme.Space.m) {
             Button {
                 value.wrappedValue.toggle()
@@ -77,6 +78,7 @@ struct TermsView: View {
             }
             .buttonStyle(.plain)
             .accessibilityAddTraits(value.wrappedValue ? .isSelected : [])
+            .accessibilityIdentifier(id)
             if let link {
                 Button("Read") { showing = link }
                     .font(Theme.Typeface.subheadline.weight(.bold))
