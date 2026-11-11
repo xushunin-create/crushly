@@ -1,6 +1,8 @@
 # Crushly — Implementation Plan
 
-Status: Phase 0 complete (2026-11-10). This file is the shared reference for the team; update it when a decision changes.
+Status (2026-11-10): Phases 0–8 implemented and verified against the demo backend and SQL tests. Live-mode verification is blocked on email delivery, APNs and edge function deployment. See the README "Status" section for the exact implemented / simulated / blocked list. This file is the shared reference for the team; update it when a decision changes.
+
+Decisions made during implementation that refine §3: the server treats the profile prompt as optional (the app still asks for it); `start_pulse` with a live session already running returns `not_permitted`; analytics names come from `app_settings.analytics_allowed_events`; "Find Each Other Now" is offered only for Heart Sync matches; an accepted meet-up that runs out of time is recorded as `completed`.
 
 ## 1. Current state (audit)
 

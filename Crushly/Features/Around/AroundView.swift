@@ -6,6 +6,7 @@ struct AroundView: View {
     @State private var mode: DisplayMode = .radar
     @State private var showStartSheet = false
     @State private var selected: PublicProfile?
+    @State private var editingPhotos = false
 
     enum DisplayMode: String, CaseIterable { case radar = "Radar", list = "List" }
 
@@ -14,6 +15,8 @@ struct AroundView: View {
             VStack(alignment: .leading, spacing: Theme.Space.xl) {
                 header
                 PulseStatusCard(showStart: $showStartSheet)
+                if state.profile?.photoReviewStatus == .rejected { rejectedPhotoCard }
+                if state.shouldOfferNotifications { NotificationPrimerCard() }
 
                 if state.pulseState == .live {
                     liveContent
@@ -29,6 +32,9 @@ struct AroundView: View {
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showStartSheet) { StartPulseSheet() }
         .sheet(item: $selected) { person in PersonProfileView(person: person) }
+        .sheet(isPresented: $editingPhotos) {
+            NavigationStack { ProfileEditorView(mode: .edit) }.closesForReveal()
+        }
         .task { await state.refreshSocial() }
     }
 
@@ -77,6 +83,22 @@ struct AroundView: View {
         if !state.recent.isEmpty { recentSection }
     }
 
+    /// A rejected photo hides you from everyone (server: hide_rejected_photos), so say so plainly.
+    private var rejectedPhotoCard: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.m) {
+            Label("Your photo wasn't approved", systemImage: "xmark.octagon.fill")
+                .font(Theme.Typeface.headline)
+                .foregroundStyle(Theme.Palette.danger)
+            Text("Others can't see you until you add a new photo. New photos go back into review.")
+                .font(Theme.Typeface.subheadline)
+                .foregroundStyle(Theme.Palette.inkSoft)
+            Button("Update photos") { editingPhotos = true }
+                .buttonStyle(.crush(.secondary))
+                .accessibilityIdentifier("photo.rejected.update")
+        }
+        .crushCard(fill: Theme.Palette.crushSoft.opacity(0.6))
+    }
+
     private var recentSection: some View {
         VStack(alignment: .leading, spacing: Theme.Space.m) {
             Eyebrow(text: "Recently in your radius")
@@ -105,6 +127,33 @@ struct AroundView: View {
         let count = state.around.count
         let place = state.currentSpace?.name ?? "here"
         return count == 1 ? "1 person in \(place)" : "\(count) people in \(place)"
+    }
+}
+
+// MARK: - Notification primer
+
+/// Non-modal, shown after the first Heart Signal — the moment a notification is clearly useful.
+struct NotificationPrimerCard: View {
+    @Environment(AppState.self) private var state
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.m) {
+            Label("Know the moment it's mutual", systemImage: "bell.badge.fill")
+                .font(Theme.Typeface.headline)
+                .foregroundStyle(Theme.Palette.crush)
+            Text("We'll only nudge you about signals, matches and meetups. Lock-screen alerts never show names or photos.")
+                .font(Theme.Typeface.subheadline)
+                .foregroundStyle(Theme.Palette.inkSoft)
+            HStack(spacing: Theme.Space.s) {
+                AsyncButton { await state.enableNotifications() } label: { Text("Turn on") }
+                    .buttonStyle(.crush)
+                    .accessibilityIdentifier("notifications.enable")
+                Button("Not now") { withAnimation(Theme.Motion.soft) { state.dismissNotificationPrimer() } }
+                    .buttonStyle(.crush(.secondary))
+                    .accessibilityIdentifier("notifications.notNow")
+            }
+        }
+        .crushCard(padding: Theme.Space.l)
     }
 }
 

@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct CrushlyApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var state = AppState.make()
     @Environment(\.scenePhase) private var scenePhase
 

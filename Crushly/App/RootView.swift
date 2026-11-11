@@ -31,6 +31,20 @@ struct RootView: View {
                     }
             }
         }
+        .overlay(alignment: .bottom) {
+            if state.isOffline {
+                Label("Offline — retrying", systemImage: "wifi.slash")
+                    .font(Theme.Typeface.caption.weight(.bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, Theme.Space.m)
+                    .padding(.vertical, Theme.Space.s)
+                    .background(Theme.Palette.ink, in: Capsule())
+                    .padding(.bottom, 96)
+                    .transition(.opacity)
+                    .accessibilityLabel("You're offline. Crushly will retry automatically.")
+            }
+        }
+        .animation(Theme.Motion.soft, value: state.isOffline)
         .animation(Theme.Motion.soft, value: state.errorMessage)
         .animation(Theme.Motion.soft, value: state.phase)
         .preferredColorScheme(.light)
@@ -58,7 +72,7 @@ struct MainTabs: View {
             Group {
                 switch state.selectedTab {
                 case .around: NavigationStack { AroundView() }
-                case .signals: NavigationStack { SignalsView() }
+                case .signals: NavigationStack(path: $state.signalsPath) { SignalsView() }
                 case .me: NavigationStack { MeView() }
                 }
             }
@@ -93,6 +107,8 @@ struct CrushTabBar: View {
         }
         .padding(.horizontal, Theme.Space.l)
         .padding(.top, Theme.Space.s)
+        // Like the system tab bar: labels stop growing at XL; long-press shows the Large Content Viewer.
+        .dynamicTypeSize(...DynamicTypeSize.xLarge)
         .background(
             Theme.Palette.surface
                 .shadow(color: .black.opacity(0.07), radius: 12, y: -4)
@@ -116,7 +132,8 @@ struct CrushTabBar: View {
                         .foregroundStyle(selected ? .white : Theme.Palette.inkSoft)
                     if badge > 0 {
                         Text("\(min(badge, 9))")
-                            .font(.system(size: 11, weight: .heavy, design: .rounded))
+                            .font(.system(.caption2, design: .rounded).weight(.heavy))
+                            .dynamicTypeSize(...DynamicTypeSize.accessibility1)
                             .foregroundStyle(.white)
                             .frame(minWidth: 18, minHeight: 18)
                             .background(Theme.Palette.ink, in: Circle())
@@ -133,6 +150,9 @@ struct CrushTabBar: View {
         .buttonStyle(.plain)
         .accessibilityLabel(badge > 0 ? "\(title), \(badge) new" : title)
         .accessibilityIdentifier("tab.\(title.lowercased())")
+        .accessibilityShowsLargeContentViewer {
+            Label(title, systemImage: icon)
+        }
         .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
     }
 }

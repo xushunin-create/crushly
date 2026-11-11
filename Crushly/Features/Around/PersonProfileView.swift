@@ -172,7 +172,10 @@ struct HeartSignalButton: View {
                     .font(.system(.caption, design: .rounded).weight(.heavy))
                     .tracking(1)
                     .multilineTextAlignment(.center)
-                    .frame(width: 130)
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.6)
+                    .frame(width: 136)
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility2)
             }
             .foregroundStyle(.white)
         }

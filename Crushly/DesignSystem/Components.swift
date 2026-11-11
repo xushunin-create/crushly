@@ -99,8 +99,9 @@ struct SectionHeader: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(eyebrow.uppercased())
                     .font(Theme.Typeface.eyebrow)
-                    .tracking(2)
+                    .kerning(1.5)
                     .foregroundStyle(Theme.Palette.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(title)
                     .font(Theme.Typeface.title)
                     .foregroundStyle(Theme.Palette.ink)

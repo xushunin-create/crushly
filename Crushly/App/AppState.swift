@@ -92,10 +92,89 @@ final class AppState {
     /// Set when a session ran out on its own; cleared when the user starts a new one or dismisses it.
     var sessionExpiredNotice = false
 
-    init(config: AppConfig, backend: CrushlyBackend, demo: DemoBackend?) {
+    // MARK: Notifications & routing
+
+    let push: PushManager
+    private(set) var notificationPermission: PushManager.Permission = .notDetermined
+    /// Navigation path of the Signals tab (connection ids), so notifications can open a connection.
+    var signalsPath: [UUID] = []
+    /// A notification tapped before sign-in finished; applied once the account is ready.
+    private(set) var pendingRoute: NotificationRoute?
+    private var registeredToken: (user: UUID, token: String)?
+
+    /// Observable so the primer disappears immediately; persisted so it stays dismissed.
+    private var notificationPrimerDismissed = UserDefaults.standard.bool(forKey: "crushly.notificationPrimerDismissed") {
+        didSet { UserDefaults.standard.set(notificationPrimerDismissed, forKey: "crushly.notificationPrimerDismissed") }
+    }
+
+    /// Ask for notification permission at a meaningful moment: after the first Heart Signal, never on launch.
+    var shouldOfferNotifications: Bool {
+        phase == .ready && notificationPermission == .notDetermined && !notificationPrimerDismissed && !sentSignals.isEmpty
+    }
+
+    init(config: AppConfig, backend: CrushlyBackend, demo: DemoBackend?, push: PushManager = .shared) {
         self.config = config
         self.backend = backend
         self.demo = demo
+        self.push = push
+        push.onToken = { [weak self] _ in Task { await self?.registerDeviceIfNeeded() } }
+        push.onRoute = { [weak self] route in self?.open(route) }
+    }
+
+    func enableNotifications() async {
+        notificationPermission = await push.requestPermission()
+        notificationPrimerDismissed = true
+        syncPulseReminder()
+    }
+
+    func dismissNotificationPrimer() {
+        notificationPrimerDismissed = true
+    }
+
+    func refreshNotificationPermission() async {
+        notificationPermission = await push.refreshPermission()
+    }
+
+    /// Opens the screen a notification points to, deferring until the account is ready.
+    func open(_ route: NotificationRoute) {
+        guard phase == .ready else {
+            pendingRoute = route
+            return
+        }
+        pendingRoute = nil
+        revealMatch = nil
+        switch route {
+        case .around:
+            selectedTab = .around
+        case .signals:
+            selectedTab = .signals
+            signalsPath = []
+        case .match(let id):
+            selectedTab = .signals
+            signalsPath = [id]
+            Task { await refreshSocial() }
+        }
+    }
+
+    private func registerDeviceIfNeeded() async {
+        guard phase == .ready, let user = userID, let token = push.deviceToken,
+              registeredToken.map({ $0.user != user || $0.token != token }) ?? true else { return }
+        #if DEBUG
+        let sandbox = true
+        #else
+        let sandbox = false
+        #endif
+        if (try? await backend.registerDevice(token: token, sandbox: sandbox)) != nil {
+            registeredToken = (user, token)
+        }
+    }
+
+    private func syncPulseReminder() {
+        if let pulse, pulse.endedAt == nil, pulse.expiresAt > now() {
+            push.schedulePulseReminder(expiresAt: pulse.expiresAt.addingTimeInterval(-clockSkew), enabled: prefs.pulseExpiry)
+        } else {
+            push.cancelPulseReminder()
+        }
     }
 
     static func make(config: AppConfig = .load()) -> AppState {
@@ -140,6 +219,12 @@ final class AppState {
         await reloadAccount()
         // The scene's first .active event can arrive before bootstrap finishes, so start refreshing here too.
         if phase != .signedOut { startPolling() }
+        await refreshNotificationPermission()
+        if demo != nil, let index = ProcessInfo.processInfo.arguments.firstIndex(of: "-CrushlyRoute"),
+           index + 1 < ProcessInfo.processInfo.arguments.count,
+           let route = NotificationRoute(ProcessInfo.processInfo.arguments[index + 1]) {
+            open(route)   // demo/test hook that simulates tapping a notification
+        }
     }
 
     /// Re-reads everything from the backend; called on launch, foreground, reconnect and after mutations.
@@ -172,12 +257,15 @@ final class AppState {
         prefs = snapshot.prefs
         rules = snapshot.rules
         scheduleExpiryCheck()
+        syncPulseReminder()
         if !account.hasAcceptedCurrentTerms {
             phase = .needsTerms
         } else if profile?.isComplete != true {
             phase = .needsProfile
         } else {
             phase = .ready
+            Task { await registerDeviceIfNeeded() }
+            if let route = pendingRoute { open(route) }
         }
     }
 
@@ -339,6 +427,9 @@ final class AppState {
         email = ""; userID = nil; profile = nil; account = PrivateAccount(); pulse = nil; shield = nil
         around = []; recent = []; receipts = []; sentSignals = []; matches = []; blocked = []; revealMatch = nil
         selectedTab = .around
+        signalsPath = []
+        registeredToken = nil
+        push.cancelPulseReminder()
     }
 
     // MARK: Auth intents

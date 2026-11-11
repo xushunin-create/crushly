@@ -43,7 +43,7 @@ struct RadarView: View {
                                 .font(Theme.Typeface.caption.weight(.bold))
                                 .foregroundStyle(Theme.Palette.ink)
                                 .padding(.horizontal, 6)
-                                .background(Theme.Palette.paper.opacity(0.85), in: Capsule())
+                                .background(Theme.Palette.paper, in: Capsule())
                         }
                         .frame(minWidth: Theme.minTap, minHeight: Theme.minTap)
                     }

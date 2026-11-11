@@ -94,6 +94,7 @@ struct MeView: View {
         }
         .scrollContentBackground(.hidden)
         .background(Theme.Palette.paper)
+        .foregroundStyle(Theme.Palette.ink, Theme.Palette.inkSoft)   // section headers/footers readable on paper
         .navigationTitle("Me")
         .sheet(isPresented: $showShield) { ShieldSheet().presentationDetents([.medium]) }
         .sheet(item: $legal) { doc in LegalDocumentView(title: doc.rawValue) }
@@ -150,6 +151,7 @@ struct SafetyTipsView: View {
                     .font(Theme.Typeface.footnote)
             }
         }
+        .foregroundStyle(Theme.Palette.ink, Theme.Palette.inkSoft)   // section headers/footers readable on paper
         .navigationTitle("Safety tips")
     }
 
@@ -219,6 +221,7 @@ struct BlockedListView: View {
                 }
             }
         }
+        .foregroundStyle(Theme.Palette.ink, Theme.Palette.inkSoft)   // section headers/footers readable on paper
         .navigationTitle("Blocked")
         .task { await state.loadBlocked() }
     }
@@ -230,6 +233,23 @@ struct NotificationSettingsView: View {
     var body: some View {
         Form {
             Section {
+                switch state.notificationPermission {
+                case .allowed:
+                    Label("Notifications are on", systemImage: "bell.fill")
+                case .denied:
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("Notifications are off for Crushly", systemImage: "bell.slash.fill")
+                        Text("Turn them on in Settings to hear about matches. The app works without them.")
+                            .font(Theme.Typeface.footnote).foregroundStyle(Theme.Palette.inkSoft)
+                    }
+                    Button("Open Settings") {
+                        if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                    }
+                case .notDetermined:
+                    AsyncButton { await state.enableNotifications() } label: { Text("Turn on notifications") }
+                }
+            }
+            Section {
                 toggle("Anonymous Heart Signals", \.anonymousSignals)
                 toggle("Heart Sync", \.heartSync)
                 toggle("Crossed Hearts", \.crossedHearts)
@@ -239,10 +259,12 @@ struct NotificationSettingsView: View {
                 toggle("Pulse session ending", \.pulseExpiry)
                 toggle("Campus events", \.campusEvents)
             } footer: {
-                Text("Lock-screen alerts never include names or photos. Push delivery isn't connected in this build yet — your choices are saved for when it is.")
+                Text("Lock-screen alerts never include names, photos or places. Your choices are enforced on the server, so they apply on every device.")
             }
         }
+        .foregroundStyle(Theme.Palette.ink, Theme.Palette.inkSoft)   // section headers/footers readable on paper
         .navigationTitle("Notifications")
+        .task { await state.refreshNotificationPermission() }
     }
 
     private func toggle(_ title: String, _ key: WritableKeyPath<NotificationPrefs, Bool>) -> some View {

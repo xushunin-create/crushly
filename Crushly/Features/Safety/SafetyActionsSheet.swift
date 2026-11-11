@@ -47,6 +47,7 @@ struct SafetyActionsSheet: View {
                     Text("Reports are private. \(person.firstName) won't see who reported them. Reporting also blocks them.")
                 }
             }
+            .foregroundStyle(Theme.Palette.ink, Theme.Palette.inkSoft)   // section headers/footers readable on paper
             .navigationTitle("Safety")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
