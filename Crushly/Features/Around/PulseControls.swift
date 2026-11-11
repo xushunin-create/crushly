@@ -27,7 +27,7 @@ struct PulseStatusCard: View {
 
     @ViewBuilder private func content(now: Date) -> some View {
         if state.isShielded {
-            card(tint: Theme.Palette.plum, icon: "shield.lefthalf.filled", eyebrow: "Protect My Heart",
+            card(tint: Theme.Palette.lavender, icon: "shield.lefthalf.filled", eyebrow: "Protect My Heart",
                  title: "You're hidden", detail: shieldDetail(now: now)) {
                 AsyncButton { await state.perform { try await state.exitShield() } } label: { Text("Leave Protect My Heart") }
                     .buttonStyle(.crush(.onInk))
@@ -198,6 +198,8 @@ struct StartPulseSheet: View {
         .task {
             if state.spaces.isEmpty { await state.loadSpaces() }
             availability = state.profile?.availability ?? .either
+            let preferred = UserDefaults.standard.integer(forKey: PulseDefaults.durationKey)
+            if state.rules.pulseDurationsMinutes.contains(preferred) { duration = .minutes(preferred) }
         }
         .onChange(of: spaceID) { _, _ in
             if duration == .eventEnd, selectedSpace?.hasFutureEnd(now: state.now()) != true { duration = .minutes(30) }

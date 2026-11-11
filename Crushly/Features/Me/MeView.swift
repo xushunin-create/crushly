@@ -6,6 +6,7 @@ struct MeView: View {
     @State private var confirmDelete = false
     @State private var verifiedOnly = false
     @State private var sounds = FeedbackService.shared.soundsEnabled
+    @AppStorage(PulseDefaults.durationKey) private var defaultDuration = 30
 
     var body: some View {
         List {
@@ -49,7 +50,24 @@ struct MeView: View {
                 LabeledContent("Discovery range", value: "Campus Space")
                 Text("Distance-based discovery isn't available yet. You only see people in the same Campus Space.")
                     .font(Theme.Typeface.footnote).foregroundStyle(Theme.Palette.inkSoft)
-                LabeledContent("Pulse sessions", value: state.rules.pulseDurationsMinutes.map { "\($0) min" }.joined(separator: " / "))
+            }
+
+            Section {
+                Picker("Default session length", selection: $defaultDuration) {
+                    ForEach(state.rules.pulseDurationsMinutes, id: \.self) { Text("\($0) minutes").tag($0) }
+                }
+                Picker("Default availability", selection: Binding(
+                    get: { state.profile?.availability ?? .either },
+                    set: { value in
+                        guard var profile = state.profile, profile.availability != value else { return }
+                        profile.availability = value
+                        Task { await state.perform { try await state.saveProfile(profile) } }
+                    }
+                )) {
+                    ForEach(Availability.allCases) { Text($0.title).tag($0) }
+                }
+            } header: { Text("Pulse") } footer: {
+                Text("Used when you Enter the Radius. You can change both each time.")
             }
 
             Section {
@@ -59,6 +77,7 @@ struct MeView: View {
             } header: { Text("Alerts") }
 
             Section("Privacy") {
+                NavigationLink("Safety tips") { SafetyTipsView() }
                 NavigationLink("Blocked people") { BlockedListView() }
                 Button("Terms of Service") { legal = .terms }
                 Button("Privacy Policy") { legal = .privacy }
@@ -100,6 +119,49 @@ struct MeView: View {
             }
         }
         .padding(.vertical, Theme.Space.s)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+enum PulseDefaults {
+    static let durationKey = "crushly.defaultDuration"
+}
+
+struct SafetyTipsView: View {
+    var body: some View {
+        List {
+            Section("Meeting someone") {
+                tip("person.3.fill", "Meet in public", "Pick a busy, well-lit spot on campus — the preset meeting points are all public.")
+                tip("message.fill", "Tell a friend", "Share where you're going and who you're meeting.")
+                tip("figure.walk.departure", "Leave whenever you want", "You never owe anyone a meetup. Cancel Find Mode anytime.")
+                tip("car.fill", "Get yourself there and back", "Use your own transport, or a route you know.")
+            }
+            Section("In the app") {
+                tip("shield.lefthalf.filled", "Protect My Heart", "Disappear instantly, end your session and stop all signals. No one is told.")
+                tip("hand.raised.fill", "Block", "They can't see, signal or interact with you, and aren't notified.")
+                tip("exclamationmark.bubble.fill", "Report", "Reports are private and reviewed by the Crushly team. Reporting also blocks.")
+                tip("location.slash.fill", "No live location", "Crushly never shares your coordinates, direction or movements.")
+            }
+            Section {
+                Label("In an emergency, call 911.", systemImage: "phone.fill")
+                    .font(Theme.Typeface.callout.weight(.bold))
+                    .foregroundStyle(Theme.Palette.danger)
+                Text("Save USC Department of Public Safety's number in your phone before you go out.")
+                    .font(Theme.Typeface.footnote)
+            }
+        }
+        .navigationTitle("Safety tips")
+    }
+
+    private func tip(_ icon: String, _ title: String, _ detail: String) -> some View {
+        HStack(alignment: .top, spacing: Theme.Space.m) {
+            Image(systemName: icon).foregroundStyle(Theme.Palette.crush).frame(width: 28).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(Theme.Typeface.headline)
+                Text(detail).font(Theme.Typeface.subheadline).foregroundStyle(Theme.Palette.inkSoft)
+            }
+        }
+        .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
     }
 }

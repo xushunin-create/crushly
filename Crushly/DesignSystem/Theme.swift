@@ -22,6 +22,8 @@ enum Theme {
         static let live = Color(red: 0.78, green: 1.0, blue: 0.25)
         static let plum = Color(red: 0.36, green: 0.18, blue: 0.55)
         static let plumSoft = Color(red: 0.91, green: 0.87, blue: 0.96)
+        /// Lavender for text/icons on ink backgrounds (plum itself is too dark there).
+        static let lavender = Color(red: 0.80, green: 0.72, blue: 1.0)
         static let amber = Color(red: 0.62, green: 0.38, blue: 0.0)
         static let amberSoft = Color(red: 0.99, green: 0.93, blue: 0.80)
         static let mint = Color(red: 0.05, green: 0.47, blue: 0.30)

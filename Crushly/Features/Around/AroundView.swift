@@ -17,7 +17,7 @@ struct AroundView: View {
 
                 if state.pulseState == .live {
                     liveContent
-                } else if !state.recent.isEmpty {
+                } else if !state.recent.isEmpty && !state.isShielded {
                     recentSection
                 }
             }
