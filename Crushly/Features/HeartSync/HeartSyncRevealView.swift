@@ -16,32 +16,30 @@ struct HeartSyncRevealView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(colors: [Theme.Palette.ink, Color(red: 0.32, green: 0.04, blue: 0.16)],
-                           startPoint: .top, endPoint: .bottom)
-                .ignoresSafeArea()
+            RetroBackground()
 
             VStack(spacing: Theme.Space.xl) {
                 Spacer(minLength: Theme.Space.l)
-                Text(isSync ? "HEART SYNC" : "CROSSED HEARTS")
-                    .font(Theme.Typeface.eyebrow).tracking(3)
-                    .foregroundStyle(Theme.Palette.live)
+                Text(isSync ? "Heart Sync" : "Crossed Hearts")
+                    .font(Theme.Typeface.title)
+                    .foregroundStyle(Theme.Palette.oxblood)
 
                 portraits
 
                 VStack(spacing: Theme.Space.s) {
                     if savedForLater {
                         Text("The timing isn't right yet.").font(Theme.Typeface.title)
-                        Text("Your connection is saved for later.").font(Theme.Typeface.title2).foregroundStyle(.white.opacity(0.75))
+                        Text("Your connection is saved for later.").font(Theme.Typeface.title2).foregroundStyle(Theme.Palette.inkSoft)
                     } else if isSync {
-                        Text("You noticed each other.").font(Theme.Typeface.title)
-                        Text("The feeling is mutual.").font(Theme.Typeface.title2).foregroundStyle(.white.opacity(0.75))
+                        Text("You noticed\neach other").font(Theme.Typeface.display)
+                        Text("The feeling is mutual.").font(Theme.Typeface.title2).foregroundStyle(Theme.Palette.crush)
                     } else {
                         Text("You missed the moment,").font(Theme.Typeface.title)
-                        Text("not each other.").font(Theme.Typeface.title2).foregroundStyle(.white.opacity(0.75))
+                        Text("not each other.").font(Theme.Typeface.title2).foregroundStyle(Theme.Palette.inkSoft)
                     }
                 }
                 .multilineTextAlignment(.center)
-                .foregroundStyle(.white)
+                .foregroundStyle(Theme.Palette.oxblood)
                 .accessibilityElement(children: .combine)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("reveal.headline")
@@ -62,11 +60,11 @@ struct HeartSyncRevealView: View {
                             withAnimation(Theme.Motion.soft) { savedForLater = true }
                         } label: { Text("Connect Later") }
                             .accessibilityIdentifier("reveal.later")
-                            .buttonStyle(.crush(.onInk))
+                            .buttonStyle(.crush(.secondary))
                         Button("Stay in the Moment") { dismiss() }
                             .accessibilityIdentifier("reveal.stay")
                             .font(Theme.Typeface.button)
-                            .foregroundStyle(.white.opacity(0.8))
+                            .foregroundStyle(Theme.Palette.inkSoft)
                             .frame(minHeight: Theme.minTap)
                     }
                 }
@@ -88,7 +86,10 @@ struct HeartSyncRevealView: View {
         ZStack {
             ForEach(0..<3, id: \.self) { index in
                 Circle()
-                    .stroke(Theme.Palette.crush.opacity(0.35 - Double(index) * 0.1), lineWidth: 2)
+                    .fill(Theme.Palette.blush.opacity(0.20 - Double(index) * 0.045))
+                    .overlay {
+                        Circle().stroke(Theme.Palette.crush.opacity(0.30 - Double(index) * 0.07), lineWidth: 2)
+                    }
                     .frame(width: CGFloat(220 + index * 50))
                     .scaleEffect(pulse ? 1.15 : 0.85)
                     .opacity(pulse ? 0.2 : 0.8)
@@ -105,6 +106,7 @@ struct HeartSyncRevealView: View {
                 .foregroundStyle(Theme.Palette.crush)
                 .padding(14)
                 .background(.white, in: Circle())
+                .overlay(SparkRays().offset(y: -48))
                 .offset(y: 70)
                 .scaleEffect(together ? 1 : 0.2)
                 .opacity(together ? 1 : 0)

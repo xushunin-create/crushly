@@ -6,7 +6,7 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            Theme.Palette.paper.ignoresSafeArea()
+            RetroBackground()
 
             switch state.phase {
             case .launching:
@@ -54,9 +54,17 @@ struct RootView: View {
 
 private struct LaunchView: View {
     var body: some View {
-        VStack(spacing: Theme.Space.m) {
-            HeartMark(size: 64)
-            Text("Crushly").font(Theme.Typeface.display)
+        VStack(spacing: Theme.Space.l) {
+            ZStack {
+                SparkRays()
+                HeartMark(size: 72)
+            }
+            Text("Crushly")
+                .font(Theme.Typeface.display)
+                .foregroundStyle(Theme.Palette.oxblood)
+            Text("real-life crushes")
+                .font(Theme.Typeface.title2)
+                .foregroundStyle(Theme.Palette.crush)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Crushly is loading")
@@ -105,15 +113,19 @@ struct CrushTabBar: View {
             item(.signals, "Signals", "heart.text.square.fill", badge: signalsBadge)
             item(.me, "Me", "person.crop.circle.fill")
         }
-        .padding(.horizontal, Theme.Space.l)
-        .padding(.top, Theme.Space.s)
+        .padding(.horizontal, Theme.Space.s)
+        .padding(.vertical, Theme.Space.s)
         // Like the system tab bar: labels stop growing at XL; long-press shows the Large Content Viewer.
         .dynamicTypeSize(...DynamicTypeSize.xLarge)
-        .background(
-            Theme.Palette.surface
-                .shadow(color: .black.opacity(0.07), radius: 12, y: -4)
+        .background {
+            UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26)
+                .fill(Theme.Palette.surface.opacity(0.97))
+                .overlay(alignment: .top) {
+                    Rectangle().fill(Theme.Palette.oxblood.opacity(0.08)).frame(height: 1)
+                }
+                .shadow(color: Theme.Palette.oxblood.opacity(0.12), radius: 16, y: -4)
                 .ignoresSafeArea(edges: .bottom)
-        )
+        }
     }
 
     private func item(_ tab: AppState.Tab, _ title: String, _ icon: String, badge: Int = 0) -> some View {
@@ -128,7 +140,7 @@ struct CrushTabBar: View {
                     Image(systemName: icon)
                         .font(.system(size: 20, weight: .semibold))
                         .frame(width: 48, height: 30)
-                        .background(selected ? Theme.Palette.crush : .clear, in: Capsule())
+                        .background(selected ? Theme.Palette.oxblood : .clear, in: Capsule())
                         .foregroundStyle(selected ? .white : Theme.Palette.inkSoft)
                     if badge > 0 {
                         Text("\(min(badge, 9))")
