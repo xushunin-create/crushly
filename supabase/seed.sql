@@ -10,4 +10,4 @@ on conflict (id) do nothing;
 insert into public.space_codes (code, space_id) values
   ('HACK26', '5a000000-0000-4000-8000-000000000004'),
   ('MIXER',  '5a000000-0000-4000-8000-000000000005')
-on conflict (code) do nothing;
+on conflict (code) do nothing; 

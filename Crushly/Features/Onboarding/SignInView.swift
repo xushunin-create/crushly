@@ -92,8 +92,25 @@ struct SignInView: View {
                 .buttonStyle(.crush)
                 .accessibilityIdentifier("signin.sendCode")
                 .disabled(!state.rules.isAllowedEmail(email))
+
+            #if DEBUG
+            // DEV ONLY — skips the emailed code. Remove before launch.
+            AsyncButton { await devSkip() } label: { Text("Dev: skip email code") }
+                .buttonStyle(.bordered)
+                .tint(Theme.Palette.plum)
+                .accessibilityIdentifier("signin.devSkip")
+                .disabled(!state.rules.isAllowedEmail(email))
+            #endif
         }
     }
+
+    #if DEBUG
+    private func devSkip() async {
+        let target = email.lowercased().trimmingCharacters(in: .whitespaces)
+        guard state.rules.isAllowedEmail(target) else { return }
+        await state.perform { try await state.devSignIn(email: target) }
+    }
+    #endif
 
     private func codeStep(_ sentTo: String) -> some View {
         VStack(alignment: .leading, spacing: Theme.Space.m) {

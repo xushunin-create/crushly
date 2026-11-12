@@ -446,6 +446,16 @@ final class AppState {
         startPolling()
     }
 
+    #if DEBUG
+    /// DEV ONLY — skips email code verification. Remove before launch.
+    func devSignIn(email: String) async throws {
+        guard rules.isAllowedEmail(email) else { throw CrushlyError.domainNotAllowed }
+        try await backend.devSignIn(email: email.lowercased().trimmingCharacters(in: .whitespaces))
+        await reloadAccount()
+        startPolling()
+    }
+    #endif
+
     func acceptTerms() async throws {
         try await backend.acceptTerms(termsVersion: LegalDocuments.termsVersion,
                                       privacyVersion: LegalDocuments.privacyVersion, ageConfirmed: true)

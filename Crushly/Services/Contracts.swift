@@ -10,6 +10,10 @@ protocol AuthService: AnyObject {
     /// Sends a one-time sign-in code. Creates the account on first use (passwordless).
     func requestCode(email: String) async throws
     func verifyCode(email: String, code: String) async throws
+    #if DEBUG
+    /// DEV ONLY — skips the emailed code. Remove before launch.
+    func devSignIn(email: String) async throws
+    #endif
     func signOut() async throws
     /// Permanently deletes the account, photos and dependent records (server-side).
     func deleteAccount() async throws
