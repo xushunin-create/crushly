@@ -15,8 +15,21 @@ struct CrushButtonStyle: ButtonStyle {
             .frame(maxWidth: .infinity, minHeight: 54)
             .padding(.horizontal, Theme.Space.l)
             .foregroundStyle(foreground)
-            .background(background, in: Capsule())
+            .background {
+                Capsule()
+                    .fill(background)
+                    .overlay {
+                        if kind == .primary {
+                            Capsule().fill(Theme.Palette.primaryGradient)
+                        }
+                    }
+            }
             .overlay(Capsule().stroke(border, lineWidth: kind == .secondary || kind == .onInk ? 1.5 : 0))
+            .shadow(
+                color: kind == .primary ? Theme.Palette.periwinkle.opacity(0.28) : .clear,
+                radius: 10,
+                y: 5
+            )
             .opacity(isEnabled ? 1 : 0.45)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(Theme.Motion.snappy, value: configuration.isPressed)
@@ -26,14 +39,14 @@ struct CrushButtonStyle: ButtonStyle {
     private var foreground: Color {
         switch kind {
         case .primary, .ink, .onInk: .white
-        case .secondary, .quiet: Theme.Palette.ink
+        case .secondary, .quiet: Theme.Palette.oxblood
         case .destructive: Theme.Palette.danger
         }
     }
 
     private var background: Color {
         switch kind {
-        case .primary: Theme.Palette.crush
+        case .primary: .clear
         case .ink: Theme.Palette.ink
         case .secondary: .clear
         case .onInk: .white.opacity(0.08)
@@ -44,7 +57,7 @@ struct CrushButtonStyle: ButtonStyle {
 
     private var border: Color {
         switch kind {
-        case .secondary: Theme.Palette.ink.opacity(0.85)
+        case .secondary: Theme.Palette.oxblood.opacity(0.75)
         case .onInk: .white.opacity(0.7)
         default: .clear
         }
@@ -163,11 +176,63 @@ struct DemoBadge: View {
         Text("DEMO")
             .font(.system(.caption2, design: .monospaced).weight(.black))
             .tracking(1.5)
-            .foregroundStyle(Theme.Palette.ink)
+            .foregroundStyle(.white)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(Theme.Palette.live, in: Capsule())
+            .background(Theme.Palette.orange, in: Capsule())
             .accessibilityLabel("Demo mode. Data is fictional.")
+    }
+}
+
+// MARK: - Retro brand decoration
+
+/// Decorative background shared by Crushly's main moments. It carries no information
+/// and remains hidden from VoiceOver.
+struct RetroBackground: View {
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                Theme.Palette.paper
+
+                Circle()
+                    .fill(Theme.Palette.blush.opacity(0.45))
+                    .frame(width: proxy.size.width * 0.72)
+                    .offset(x: proxy.size.width * 0.34, y: -proxy.size.height * 0.40)
+
+                Circle()
+                    .trim(from: 0.48, to: 1)
+                    .stroke(Theme.Palette.orange.opacity(0.72), lineWidth: 28)
+                    .frame(width: proxy.size.width * 0.62, height: proxy.size.width * 0.62)
+                    .rotationEffect(.degrees(18))
+                    .offset(x: -proxy.size.width * 0.38, y: proxy.size.height * 0.42)
+
+                Circle()
+                    .fill(Theme.Palette.crush.opacity(0.15))
+                    .frame(width: proxy.size.width * 0.42)
+                    .offset(x: proxy.size.width * 0.42, y: proxy.size.height * 0.34)
+            }
+        }
+        .ignoresSafeArea()
+        .accessibilityHidden(true)
+    }
+}
+
+/// Small expressive rays used around titles and hearts.
+struct SparkRays: View {
+    var color: Color = Theme.Palette.orange
+
+    var body: some View {
+        ZStack {
+            ForEach(0..<7, id: \.self) { index in
+                Capsule()
+                    .fill(color)
+                    .frame(width: 4, height: 17)
+                    .offset(y: -25)
+                    .rotationEffect(.degrees(Double(index - 3) * 23))
+            }
+        }
+        .frame(width: 80, height: 56)
+        .accessibilityHidden(true)
     }
 }
 

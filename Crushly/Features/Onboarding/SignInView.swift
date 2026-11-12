@@ -12,35 +12,50 @@ struct SignInView: View {
     private enum Field { case email, code }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.Space.xl) {
-                hero
-                if let sentTo = codeSentTo {
-                    codeStep(sentTo)
-                } else {
-                    emailStep
+        ZStack {
+            RetroBackground()
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Space.xl) {
+                    hero
+                    Group {
+                        if let sentTo = codeSentTo {
+                            codeStep(sentTo)
+                        } else {
+                            emailStep
+                        }
+                    }
+                    .crushCard(padding: Theme.Space.xl, fill: Theme.Palette.surface.opacity(0.94))
+
+                    Text("Verifying your email confirms you control a USC address. It is not identity or age verification.")
+                        .font(Theme.Typeface.footnote)
+                        .foregroundStyle(Theme.Palette.inkSoft)
                 }
-                Text("Verifying your email confirms you control a USC address. It is not identity or age verification.")
-                    .font(Theme.Typeface.footnote)
-                    .foregroundStyle(Theme.Palette.inkSoft)
+                .padding(Theme.Space.gutter)
+                .padding(.top, Theme.Space.xxl)
             }
-            .padding(Theme.Space.gutter)
-            .padding(.top, Theme.Space.xxl)
+            .scrollDismissesKeyboard(.interactively)
         }
-        .scrollDismissesKeyboard(.interactively)
         .onAppear { focus = .email }
     }
 
     private var hero: some View {
         VStack(alignment: .leading, spacing: Theme.Space.m) {
-            HStack {
-                HeartMark(size: 34)
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 0) {
+                    ZStack(alignment: .leading) {
+                        SparkRays().offset(x: 2, y: -18)
+                        HeartMark(size: 42)
+                    }
+                    Text("Crushly")
+                        .font(Theme.Typeface.display)
+                        .foregroundStyle(Theme.Palette.oxblood)
+                }
                 Spacer()
                 if state.config.isDemo { DemoBadge() }
             }
             Text("Someone nearby\nmight be feeling it too.")
                 .font(Theme.Typeface.display)
-                .foregroundStyle(Theme.Palette.ink)
+                .foregroundStyle(Theme.Palette.oxblood)
                 .fixedSize(horizontal: false, vertical: true)
             Text("Crushly is for USC students. Interest stays anonymous until it's mutual.")
                 .font(Theme.Typeface.body)

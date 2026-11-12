@@ -14,9 +14,16 @@ struct RadarView: View {
             let size = min(geo.size.width, geo.size.height)
             let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
             ZStack {
-                ForEach([0.95, 0.68, 0.42], id: \.self) { scale in
+                Circle()
+                    .fill(Theme.Palette.blush.opacity(0.12))
+                    .frame(width: size * 0.98, height: size * 0.98)
+
+                ForEach(Array([0.95, 0.72, 0.50].enumerated()), id: \.offset) { index, scale in
                     Circle()
-                        .stroke(Theme.Palette.crush.opacity(0.16), style: StrokeStyle(lineWidth: 1, dash: scale == 0.68 ? [4, 5] : []))
+                        .fill(Theme.Palette.crush.opacity(0.07 + Double(index) * 0.045))
+                        .overlay {
+                            Circle().stroke(Theme.Palette.crush.opacity(0.16), lineWidth: 1)
+                        }
                         .frame(width: size * scale, height: size * scale)
                 }
                 if !reduceMotion {
@@ -26,9 +33,9 @@ struct RadarView: View {
                         .animation(.easeOut(duration: 2.6).repeatForever(autoreverses: false), value: sweep)
                 }
                 Circle()
-                    .fill(Theme.Palette.crush)
+                    .fill(Theme.Palette.oxblood)
                     .frame(width: size * 0.2, height: size * 0.2)
-                    .overlay(Image(systemName: "heart.fill").font(.system(size: size * 0.07)).foregroundStyle(.white))
+                    .overlay(Image(systemName: "person.fill").font(.system(size: size * 0.07)).foregroundStyle(.white))
                     .shadow(color: Theme.Palette.crush.opacity(0.35), radius: 14)
                     .accessibilityLabel("You")
 
@@ -54,6 +61,11 @@ struct RadarView: View {
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
+            .background(Theme.Palette.surface.opacity(0.76), in: RoundedRectangle(cornerRadius: Theme.Radius.l, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: Theme.Radius.l, style: .continuous)
+                    .stroke(Theme.Palette.oxblood.opacity(0.08))
+            }
         }
         .onAppear { sweep = true }
         .accessibilityElement(children: .contain)

@@ -14,6 +14,7 @@ struct AroundView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Space.xl) {
                 header
+                if state.pulseState != .live { pulseHero }
                 PulseStatusCard(showStart: $showStartSheet)
                 if state.profile?.photoReviewStatus == .rejected { rejectedPhotoCard }
                 if state.shouldOfferNotifications { NotificationPrimerCard() }
@@ -29,6 +30,7 @@ struct AroundView: View {
             .padding(.bottom, Theme.Space.xl)
         }
         .refreshable { await state.reloadAccount() }
+        .background(Color.clear)
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showStartSheet) { StartPulseSheet() }
         .sheet(item: $selected) { person in PersonProfileView(person: person) }
@@ -39,11 +41,56 @@ struct AroundView: View {
     }
 
     private var header: some View {
-        SectionHeader(
-            eyebrow: state.currentSpace.map { "In \($0.name)" } ?? "Surrounding you",
-            title: "Your radius",
-            trailing: state.config.isDemo ? AnyView(DemoBadge()) : nil
-        )
+        HStack {
+            Image(systemName: "person.crop.circle")
+                .font(.title2)
+                .foregroundStyle(Theme.Palette.oxblood)
+                .frame(width: Theme.minTap, height: Theme.minTap)
+            Spacer()
+            Text(state.pulseState == .live ? "Around" : "Crushly")
+                .font(Theme.Typeface.title2)
+                .foregroundStyle(Theme.Palette.oxblood)
+            Spacer()
+            Group {
+                if state.config.isDemo {
+                    DemoBadge()
+                } else {
+                    Image(systemName: "bell")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(Theme.Palette.oxblood)
+                }
+            }
+            .frame(minWidth: Theme.minTap, minHeight: Theme.minTap)
+        }
+    }
+
+    private var pulseHero: some View {
+        VStack(spacing: Theme.Space.m) {
+            ZStack {
+                SparkRays().offset(y: -26)
+                Image(systemName: "dot.radiowaves.left.and.right")
+                    .font(.system(size: 42, weight: .bold))
+                    .foregroundStyle(Theme.Palette.crush)
+            }
+            Text("Pulse Mode")
+                .font(Theme.Typeface.display)
+                .foregroundStyle(Theme.Palette.oxblood)
+            Text("Go on campus. Be visible.\nMeet real crushes.")
+                .font(Theme.Typeface.body.weight(.semibold))
+                .foregroundStyle(Theme.Palette.inkSoft)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, Theme.Space.xl)
+        .background(Theme.Palette.blush.opacity(0.22), in: RoundedRectangle(cornerRadius: Theme.Radius.l, style: .continuous))
+        .overlay(alignment: .bottomTrailing) {
+            Circle()
+                .fill(Theme.Palette.orange.opacity(0.24))
+                .frame(width: 92, height: 92)
+                .offset(x: 26, y: 34)
+                .clipped()
+        }
+        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder private var liveContent: some View {
