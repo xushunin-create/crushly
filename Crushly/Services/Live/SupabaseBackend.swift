@@ -82,29 +82,16 @@ final class SupabaseBackend: CrushlyBackend {
     }
 
     #if DEBUG
-    /// DEV ONLY — remove before launch. Signs in with a fixed password instead of an emailed code,
-    /// creating the account on first use. Needs "Confirm email" turned off in Supabase Auth
-    /// (otherwise sign-up returns no session). Accounts first created via OTP have no password
-    /// and can't use this path.
+    /// DEV ONLY — remove before launch. Signs in with a fixed password instead of an emailed code.
+    /// Never signs up (that would send a confirmation email): create the account first with
+    /// supabase/dev/create_dev_user.sql.
     private static let devPassword = "crushly-dev-bypass-password"
 
     func devSignIn(email: String) async throws {
         do {
             _ = try await client.auth.signIn(email: email, password: Self.devPassword)
-            return
         } catch {
-            // Fall through to sign-up when the account doesn't exist yet.
-        }
-        do {
-            let response = try await client.auth.signUp(email: email, password: Self.devPassword)
-            guard response.session != nil else {
-                throw CrushlyError.unknown("dev sign-up returned no session — disable \"Confirm email\" in Supabase Auth")
-            }
-        } catch let error as CrushlyError {
-            throw error
-        } catch {
-            if "\(error)".localizedCaseInsensitiveContains("database error") { throw CrushlyError.domainNotAllowed }
-            throw CrushlyError.unknown("dev sign-in failed: \(error.localizedDescription)")
+            throw CrushlyError.unknown("dev account \(email) isn't set up. Run supabase/dev/create_dev_user.sql in the Supabase SQL Editor")
         }
     }
     #endif

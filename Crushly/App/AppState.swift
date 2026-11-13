@@ -447,10 +447,15 @@ final class AppState {
     }
 
     #if DEBUG
+    /// DEV ONLY — fixed account used when the dev button is tapped with no email typed.
+    static let devEmail = "crushly-dev@usc.edu"
+
     /// DEV ONLY — skips email code verification. Remove before launch.
-    func devSignIn(email: String) async throws {
-        guard rules.isAllowedEmail(email) else { throw CrushlyError.domainNotAllowed }
-        try await backend.devSignIn(email: email.lowercased().trimmingCharacters(in: .whitespaces))
+    /// Uses the typed email if it's a valid USC address, otherwise the fixed dev account.
+    func devSignIn(email: String?) async throws {
+        let typed = (email ?? "").lowercased().trimmingCharacters(in: .whitespaces)
+        let target = rules.isAllowedEmail(typed) ? typed : Self.devEmail
+        try await backend.devSignIn(email: target)
         await reloadAccount()
         startPolling()
     }

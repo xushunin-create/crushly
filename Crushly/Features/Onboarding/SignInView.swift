@@ -95,22 +95,15 @@ struct SignInView: View {
 
             #if DEBUG
             // DEV ONLY — skips the emailed code. Remove before launch.
-            AsyncButton { await devSkip() } label: { Text("Dev: skip email code") }
-                .buttonStyle(.bordered)
-                .tint(Theme.Palette.plum)
-                .accessibilityIdentifier("signin.devSkip")
-                .disabled(!state.rules.isAllowedEmail(email))
+            AsyncButton { await state.perform { try await state.devSignIn(email: email) } } label: {
+                Text(state.rules.isAllowedEmail(email) ? "Dev: sign in as this email" : "Dev: skip sign-in")
+            }
+            .buttonStyle(.bordered)
+            .tint(Theme.Palette.plum)
+            .accessibilityIdentifier("signin.devSkip")
             #endif
         }
     }
-
-    #if DEBUG
-    private func devSkip() async {
-        let target = email.lowercased().trimmingCharacters(in: .whitespaces)
-        guard state.rules.isAllowedEmail(target) else { return }
-        await state.perform { try await state.devSignIn(email: target) }
-    }
-    #endif
 
     private func codeStep(_ sentTo: String) -> some View {
         VStack(alignment: .leading, spacing: Theme.Space.m) {
