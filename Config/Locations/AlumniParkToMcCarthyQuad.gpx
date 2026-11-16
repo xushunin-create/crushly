@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<!-- Stand in Alumni Park, then walk to McCarthy Quad (consent must not carry over).
+     Simulated test route over DRAFT zone outlines (OpenStreetMap). Not a surveyed path. -->
+<gpx version="1.1" creator="Crushly test fixtures">
+  <wpt lat="34.0205881" lon="-118.2847070"><time>2026-01-01T12:00:00Z</time></wpt>
+  <wpt lat="34.0205881" lon="-118.2847070"><time>2026-01-01T12:00:00Z</time></wpt>
+  <wpt lat="34.0205971" lon="-118.2847070"><time>2026-01-01T12:00:00Z</time></wpt>
+  <wpt lat="34.0206089" lon="-118.2846296"><time>2026-01-01T12:00:05Z</time></wpt>
+  <wpt lat="34.0206207" lon="-118.2845523"><time>2026-01-01T12:00:11Z</time></wpt>
+  <wpt lat="34.0206324" lon="-118.2844749"><time>2026-01-01T12:00:16Z</time></wpt>
+  <wpt lat="34.0206442" lon="-118.2843975"><time>2026-01-01T12:00:21Z</time></wpt>
+  <wpt lat="34.0206559" lon="-118.2843202"><time>2026-01-01T12:00:26Z</time></wpt>
+  <wpt lat="34.0206677" lon="-118.2842428"><time>2026-01-01T12:00:31Z</time></wpt>
+  <wpt lat="34.0206795" lon="-118.2841655"><time>2026-01-01T12:00:36Z</time></wpt>
+  <wpt lat="34.0206912" lon="-118.2840881"><time>2026-01-01T12:00:42Z</time></wpt>
+  <wpt lat="34.0207030" lon="-118.2840107"><time>2026-01-01T12:00:47Z</time></wpt>
+  <wpt lat="34.0207148" lon="-118.2839334"><time>2026-01-01T12:00:52Z</time></wpt>
+  <wpt lat="34.0207265" lon="-118.2838560"><time>2026-01-01T12:00:57Z</time></wpt>
+  <wpt lat="34.0207383" lon="-118.2837787"><time>2026-01-01T12:01:02Z</time></wpt>
+  <wpt lat="34.0207501" lon="-118.2837013"><time>2026-01-01T12:01:08Z</time></wpt>
+  <wpt lat="34.0207618" lon="-118.2836239"><time>2026-01-01T12:01:13Z</time></wpt>
+  <wpt lat="34.0207736" lon="-118.2835466"><time>2026-01-01T12:01:18Z</time></wpt>
+  <wpt lat="34.0207853" lon="-118.2834692"><time>2026-01-01T12:01:23Z</time></wpt>
+  <wpt lat="34.0207971" lon="-118.2833919"><time>2026-01-01T12:01:28Z</time></wpt>
+  <wpt lat="34.0208089" lon="-118.2833145"><time>2026-01-01T12:01:34Z</time></wpt>
+  <wpt lat="34.0208206" lon="-118.2832371"><time>2026-01-01T12:01:39Z</time></wpt>
+  <wpt lat="34.0208206" lon="-118.2832371"><time>2026-01-01T12:01:44Z</time></wpt>
+  <wpt lat="34.0208206" lon="-118.2832371"><time>2026-01-01T12:01:49Z</time></wpt>
+  <wpt lat="34.0208206" lon="-118.2832371"><time>2026-01-01T12:01:54Z</time></wpt>
+  <wpt lat="34.0208206" lon="-118.2832371"><time>2026-01-01T12:01:59Z</time></wpt>
+  <wpt lat="34.0208206" lon="-118.2832371"><time>2026-01-01T12:02:04Z</time></wpt>
+  <wpt lat="34.0208206" lon="-118.2832371"><time>2026-01-01T12:02:09Z</time></wpt>
+  <wpt lat="34.0208206" lon="-118.2832371"><time>2026-01-01T12:02:14Z</time></wpt>
+  <wpt lat="34.0208206" lon="-118.2832371"><time>2026-01-01T12:02:19Z</time></wpt>
+  <wpt lat="34.0208206" lon="-118.2832371"><time>2026-01-01T12:02:24Z</time></wpt>
+  <wpt lat="34.0208206" lon="-118.2832371"><time>2026-01-01T12:02:29Z</time></wpt>
+  <wpt lat="34.0208206" lon="-118.2832371"><time>2026-01-01T12:02:34Z</time></wpt>
+  <wpt lat="34.0208206" lon="-118.2832371"><time>2026-01-01T12:02:39Z</time></wpt>
+  <wpt lat="34.0208206" lon="-118.2832371"><time>2026-01-01T12:02:44Z</time></wpt>
+  <wpt lat="34.0208206" lon="-118.2832371"><time>2026-01-01T12:02:49Z</time></wpt>
+  <wpt lat="34.0208206" lon="-118.2832371"><time>2026-01-01T12:02:54Z</time></wpt>
+  <wpt lat="34.0208206" lon="-118.2832371"><time>2026-01-01T12:02:59Z</time></wpt>
+  <wpt lat="34.0208206" lon="-118.2832371"><time>2026-01-01T12:03:04Z</time></wpt>
+  <wpt lat="34.0208206" lon="-118.2832371"><time>2026-01-01T12:03:09Z</time></wpt>
+</gpx>

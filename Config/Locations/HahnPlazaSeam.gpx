@@ -1,0 +1,46 @@
+<?xml version="1.0"?>
+<!-- Cross the seam between Hahn Plaza and Alumni Park (same zone; must stay inside).
+     Simulated test route over DRAFT zone outlines (OpenStreetMap). Not a surveyed path. -->
+<gpx version="1.1" creator="Crushly test fixtures">
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:00:00Z</time></wpt>
+  <wpt lat="34.0202956" lon="-118.2851146"><time>2026-01-01T12:00:05Z</time></wpt>
+  <wpt lat="34.0203374" lon="-118.2850564"><time>2026-01-01T12:00:10Z</time></wpt>
+  <wpt lat="34.0203792" lon="-118.2849981"><time>2026-01-01T12:00:15Z</time></wpt>
+  <wpt lat="34.0204210" lon="-118.2849399"><time>2026-01-01T12:00:20Z</time></wpt>
+  <wpt lat="34.0204628" lon="-118.2848817"><time>2026-01-01T12:00:25Z</time></wpt>
+  <wpt lat="34.0205045" lon="-118.2848234"><time>2026-01-01T12:00:30Z</time></wpt>
+  <wpt lat="34.0205463" lon="-118.2847652"><time>2026-01-01T12:00:35Z</time></wpt>
+  <wpt lat="34.0205881" lon="-118.2847070"><time>2026-01-01T12:00:40Z</time></wpt>
+  <wpt lat="34.0205463" lon="-118.2847652"><time>2026-01-01T12:00:45Z</time></wpt>
+  <wpt lat="34.0205045" lon="-118.2848234"><time>2026-01-01T12:00:50Z</time></wpt>
+  <wpt lat="34.0204628" lon="-118.2848817"><time>2026-01-01T12:00:55Z</time></wpt>
+  <wpt lat="34.0204210" lon="-118.2849399"><time>2026-01-01T12:01:00Z</time></wpt>
+  <wpt lat="34.0203792" lon="-118.2849981"><time>2026-01-01T12:01:05Z</time></wpt>
+  <wpt lat="34.0203374" lon="-118.2850564"><time>2026-01-01T12:01:10Z</time></wpt>
+  <wpt lat="34.0202956" lon="-118.2851146"><time>2026-01-01T12:01:16Z</time></wpt>
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:01:21Z</time></wpt>
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:01:26Z</time></wpt>
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:01:31Z</time></wpt>
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:01:36Z</time></wpt>
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:01:41Z</time></wpt>
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:01:46Z</time></wpt>
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:01:51Z</time></wpt>
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:01:56Z</time></wpt>
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:02:01Z</time></wpt>
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:02:06Z</time></wpt>
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:02:11Z</time></wpt>
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:02:16Z</time></wpt>
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:02:21Z</time></wpt>
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:02:26Z</time></wpt>
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:02:31Z</time></wpt>
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:02:36Z</time></wpt>
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:02:41Z</time></wpt>
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:02:46Z</time></wpt>
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:02:51Z</time></wpt>
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:02:56Z</time></wpt>
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:03:01Z</time></wpt>
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:03:06Z</time></wpt>
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:03:11Z</time></wpt>
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:03:16Z</time></wpt>
+  <wpt lat="34.0202538" lon="-118.2851728"><time>2026-01-01T12:03:21Z</time></wpt>
+</gpx>

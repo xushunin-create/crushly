@@ -60,24 +60,37 @@ begin
   revoke update (photo_review_status, selfie_status) on public.profiles from authenticated;
   perform tests.login(a);
 
-  -- my_state hydrates.
+  -- my_state hydrates (no pulse/shield/space anymore).
   v_state := public.my_state();
-  perform tests.assert(v_state ? 'profile' and v_state ? 'private' and v_state ? 'pulse' and v_state ? 'shield'
-                       and v_state ? 'prefs' and v_state ? 'settings', 'my_state has all keys');
-  perform tests.assert((v_state->'settings'->>'signals_per_session')::int = 5, 'my_state exposes settings');
-  perform tests.assert(v_state->'pulse' = 'null'::jsonb, 'my_state pulse null without session');
+  perform tests.assert(v_state ? 'profile' and v_state ? 'private' and v_state ? 'prefs' and v_state ? 'settings'
+                       and not v_state ? 'pulse' and not v_state ? 'shield', 'my_state has exactly the new keys');
+  perform tests.assert((v_state->'settings'->>'participation_lease_seconds')::int = 60, 'my_state exposes the 60 s lease setting');
 
-  -- Tables clients must not read.
-  perform tests.expect_sqlstate('select * from public.space_codes', '42501', 'space_codes not readable');
+  -- Tables clients must not read or write directly.
+  perform tests.expect_sqlstate('select * from public.participation_sessions', '42501', 'participation_sessions not readable');
+  perform tests.expect_sqlstate('select * from public.participation_state', '42501', 'participation_state not readable');
+  perform tests.expect_sqlstate('select * from public.interests', '42501', 'interests not readable');
+  perform tests.expect_sqlstate('select * from public.discovery_exposures', '42501', 'discovery_exposures not readable');
+  perform tests.expect_sqlstate('select * from public.matches', '42501', 'matches not readable');
+  perform tests.expect_sqlstate('select * from public.messages', '42501', 'messages not readable');
+  perform tests.expect_sqlstate('select * from public.report_evidence', '42501', 'report_evidence not readable');
+  perform tests.expect_sqlstate('select * from public.deletion_tombstones', '42501', 'deletion_tombstones not readable');
+  perform tests.expect_sqlstate('select * from public.rate_limits', '42501', 'rate_limits not readable');
   perform tests.expect_sqlstate('select * from public.notification_outbox', '42501', 'notification_outbox not readable');
   perform tests.expect_sqlstate('select * from public.analytics_events', '42501', 'analytics_events not readable');
   perform tests.expect_sqlstate('select * from public.reports', '42501', 'reports not readable');
-  perform tests.expect_sqlstate($q$insert into public.heart_signals (sender_id, recipient_id, expires_at, visible_at) values (auth.uid(), auth.uid(), now(), now())$q$,
-                                '42501', 'heart_signals not directly writable');
-  perform tests.expect_sqlstate($q$insert into public.pulse_sessions (user_id, space_id, availability, expires_at) values (auth.uid(), gen_random_uuid(), 'either', now() + interval '1 day')$q$,
-                                '42501', 'pulse_sessions not directly writable');
-  perform tests.expect_sqlstate('select public.is_discoverable_to(auth.uid(), auth.uid())', '42501', 'helper predicates not executable by clients');
+  perform tests.expect_sqlstate($q$insert into public.participation_sessions (user_id, space_id, boundary_version, consent_epoch, client_request_id, lease_expires_at, last_fix_ts_ms) values (auth.uid(), gen_random_uuid(), 1, 0, gen_random_uuid(), now() + interval '1 day', 0)$q$,
+                                '42501', 'participation_sessions not directly writable');
+  perform tests.expect_sqlstate($q$insert into public.messages (id, match_id, sender_id, body) values (gen_random_uuid(), gen_random_uuid(), auth.uid(), 'x')$q$,
+                                '42501', 'messages not directly writable');
+  perform tests.expect_sqlstate($q$update public.profile_private set match_gender = 'man', show_me = '{woman}'$q$,
+                                '42501', 'match preferences only writable through the RPC');
+  perform tests.expect_sqlstate('select public.can_match(auth.uid(), auth.uid())', '42501', 'helper predicates not executable by clients');
+  perform tests.expect_sqlstate($q$select public.check_evidence('{}', null, false)$q$, '42501', 'evidence helper not executable by clients');
+  perform tests.expect_sqlstate('select public.end_participation(auth.uid())', '42501', 'end_participation not executable by clients');
+  perform tests.expect_sqlstate('select public.delete_match(gen_random_uuid())', '42501', 'delete_match not executable by clients');
   perform tests.expect_sqlstate('select public.crushly_tick()', '42501', 'crushly_tick not executable by clients');
+  perform tests.expect_sqlstate('select public.claim_due_notifications(10)', '42501', 'dispatcher API not executable by clients');
 
   -- Anonymous role has nothing.
   perform tests.logout();
@@ -93,7 +106,8 @@ begin
 
   -- Analytics allow-list.
   perform tests.login(a);
-  perform public.track_event('pulse_started', '{"duration":30}');
+  perform public.track_event('profile_updated', '{}');
+  perform tests.expect_error($q$select public.track_event('pulse_started', '{}')$q$, 'invalid_input', 'presence-type analytics events are no longer allowed');
   perform tests.expect_error($q$select public.track_event('steal_data', '{}')$q$, 'invalid_input', 'unknown analytics event rejected');
   perform tests.expect_error(format($q$select public.track_event('app_open', '{"x":"%s"}')$q$, repeat('y', 1100)), 'invalid_input', 'analytics props > 1KB rejected');
   perform tests.logout();

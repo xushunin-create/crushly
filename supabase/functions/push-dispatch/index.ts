@@ -19,20 +19,14 @@ type Claimed = {
   tokens: { token: string; apns_env: "sandbox" | "production" }[];
 };
 
-// Discreet copy. `route` is read by the app to deep-link after unlock (see NotificationRouter.swift).
+// Generic copy only: no sender, no message text, no place (docs/CAMPUS_SPACES_DESIGN.md §7.3).
+// `route` is an opaque match id the app uses to deep-link after unlock; it is never displayed.
 function render(n: Claimed): { title: string; body: string; route: string } | null {
-  const match = typeof n.payload.match_id === "string" ? `match:${n.payload.match_id}` : "signals";
+  const route = typeof n.payload.match_id === "string" ? `match:${n.payload.match_id}` : "connections";
   switch (n.kind) {
-    case "anonymous_signal":    return { title: "Crushly", body: "Someone nearby felt a spark.", route: "signals" };
-    case "heart_sync":          return { title: "Crushly", body: "Someone felt it too. Open Crushly to see.", route: match };
-    case "crossed_hearts":      return { title: "Crushly", body: "You missed the moment, not each other.", route: match };
-    case "find_request":        return { title: "Crushly", body: "You have a new request.", route: match };
-    case "find_accepted":       return { title: "Crushly", body: "Your request was accepted.", route: match };
-    case "connection_action":   return { title: "Crushly", body: "You have something new waiting.", route: match };
-    case "connection_reminder": return { title: "Crushly", body: "A connection is waiting on you.", route: match };
-    case "connection_expired":  return { title: "Crushly", body: "A saved connection has expired.", route: "signals" };
-    case "pulse_expiring":      return { title: "Crushly", body: "Your Pulse ends in 5 minutes.", route: "around" };
-    default:                    return null;
+    case "new_match":   return { title: "Crushly", body: "You have a new match.", route };
+    case "new_message": return { title: "Crushly", body: "You have a new message.", route };
+    default:            return null;
   }
 }
 

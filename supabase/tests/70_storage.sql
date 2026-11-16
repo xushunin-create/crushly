@@ -4,6 +4,7 @@ do $$
 declare a uuid; b uuid; n int;
 begin
   a := tests.make_user('pa'); b := tests.make_user('pb');
+  perform tests.make_space('storage-space');
   perform tests.assert((select public from storage.buckets where id = 'profile-photos') = false, 'profile-photos bucket is private');
   perform tests.login(a);
   insert into storage.objects (bucket_id, name, owner) values ('profile-photos', a::text || '/one.jpg', a);
@@ -17,8 +18,13 @@ begin
   delete from storage.objects where name like a::text || '/%';
   get diagnostics n = row_count;
   perform tests.assert(n = 0, 'stranger cannot delete photos');
-  perform tests.pulse(a, 'Leavey Library'); perform tests.pulse(b, 'Leavey Library');
-  perform tests.assert((select count(*) from storage.objects where name like a::text || '/%') = 1, 'discoverable user can read photos');
+  perform tests.participate(a, 'storage-space'); perform tests.participate(b, 'storage-space');
+  perform tests.assert((select count(*) from storage.objects where name like a::text || '/%') = 1, 'co-participant who can match can read photos');
+  perform tests.expire(a);
+  perform tests.login(b);
+  perform tests.assert((select count(*) from storage.objects where name like a::text || '/%') = 0, 'photos unreadable once participation lapses (no match)');
+  perform tests.participate(a, 'storage-space');
+  perform tests.login(b);
   perform tests.login(a);
   perform public.block_user(b);
   perform tests.login(b);

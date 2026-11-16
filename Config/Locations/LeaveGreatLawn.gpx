@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<!-- Stand on the Great Lawn, then walk ~150 m out (participation must be revoked).
+     Simulated test route over DRAFT zone outlines (OpenStreetMap). Not a surveyed path. -->
+<gpx version="1.1" creator="Crushly test fixtures">
+  <wpt lat="34.0268984" lon="-118.2853975"><time>2026-01-01T12:00:00Z</time></wpt>
+  <wpt lat="34.0268984" lon="-118.2853975"><time>2026-01-01T12:00:00Z</time></wpt>
+  <wpt lat="34.0269074" lon="-118.2853975"><time>2026-01-01T12:00:00Z</time></wpt>
+  <wpt lat="34.0269069" lon="-118.2853201"><time>2026-01-01T12:00:05Z</time></wpt>
+  <wpt lat="34.0269065" lon="-118.2852427"><time>2026-01-01T12:00:10Z</time></wpt>
+  <wpt lat="34.0269061" lon="-118.2851652"><time>2026-01-01T12:00:16Z</time></wpt>
+  <wpt lat="34.0269057" lon="-118.2850878"><time>2026-01-01T12:00:21Z</time></wpt>
+  <wpt lat="34.0269052" lon="-118.2850104"><time>2026-01-01T12:00:26Z</time></wpt>
+  <wpt lat="34.0269048" lon="-118.2849330"><time>2026-01-01T12:00:31Z</time></wpt>
+  <wpt lat="34.0269044" lon="-118.2848556"><time>2026-01-01T12:00:36Z</time></wpt>
+  <wpt lat="34.0269039" lon="-118.2847781"><time>2026-01-01T12:00:41Z</time></wpt>
+  <wpt lat="34.0269035" lon="-118.2847007"><time>2026-01-01T12:00:46Z</time></wpt>
+  <wpt lat="34.0269031" lon="-118.2846233"><time>2026-01-01T12:00:51Z</time></wpt>
+  <wpt lat="34.0269027" lon="-118.2845459"><time>2026-01-01T12:00:56Z</time></wpt>
+  <wpt lat="34.0269022" lon="-118.2844684"><time>2026-01-01T12:01:01Z</time></wpt>
+  <wpt lat="34.0269018" lon="-118.2843910"><time>2026-01-01T12:01:07Z</time></wpt>
+  <wpt lat="34.0269014" lon="-118.2843136"><time>2026-01-01T12:01:12Z</time></wpt>
+  <wpt lat="34.0269009" lon="-118.2842362"><time>2026-01-01T12:01:17Z</time></wpt>
+  <wpt lat="34.0269005" lon="-118.2841588"><time>2026-01-01T12:01:22Z</time></wpt>
+  <wpt lat="34.0269001" lon="-118.2840813"><time>2026-01-01T12:01:27Z</time></wpt>
+  <wpt lat="34.0268997" lon="-118.2840039"><time>2026-01-01T12:01:32Z</time></wpt>
+  <wpt lat="34.0268992" lon="-118.2839265"><time>2026-01-01T12:01:37Z</time></wpt>
+  <wpt lat="34.0268988" lon="-118.2838491"><time>2026-01-01T12:01:42Z</time></wpt>
+  <wpt lat="34.0268984" lon="-118.2837717"><time>2026-01-01T12:01:47Z</time></wpt>
+  <wpt lat="34.0268984" lon="-118.2837717"><time>2026-01-01T12:01:52Z</time></wpt>
+  <wpt lat="34.0268984" lon="-118.2837717"><time>2026-01-01T12:01:57Z</time></wpt>
+  <wpt lat="34.0268984" lon="-118.2837717"><time>2026-01-01T12:02:02Z</time></wpt>
+  <wpt lat="34.0268984" lon="-118.2837717"><time>2026-01-01T12:02:07Z</time></wpt>
+  <wpt lat="34.0268984" lon="-118.2837717"><time>2026-01-01T12:02:12Z</time></wpt>
+  <wpt lat="34.0268984" lon="-118.2837717"><time>2026-01-01T12:02:17Z</time></wpt>
+</gpx>

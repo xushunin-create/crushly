@@ -52,7 +52,7 @@ for t in $(cd "$ROOT" && ls tests/[1-9]*.sql | sort); do
   fi
 done
 
-# Concurrency: two connections send reciprocal signals at the same time.
+# Concurrency: two connections express reciprocal interest at the same time.
 conc() {
   "${PSQL[@]}" -f /work/tests/concurrency/setup.sql >/dev/null || return 1
   local ids; ids="$("${PSQL[@]}" -tAc "select a || ' ' || b from tests.conc_pairs order by n")" || return 1
@@ -62,7 +62,7 @@ conc() {
     for pair in "$a $b" "$b $a"; do
       set -- $pair
       docker exec "$NAME" psql -h 127.0.0.1 -U postgres -d postgres -X -q -v ON_ERROR_STOP=1 -tA \
-        -c "begin; select tests.login('$1'); select public.send_heart_signal('$2')->>'result'; select pg_sleep(2); commit;" \
+        -c "begin; select tests.login('$1'); select public.express_interest('$2')->>'result'; select pg_sleep(2); commit;" \
         > /dev/null &
       pids+=($!)
     done

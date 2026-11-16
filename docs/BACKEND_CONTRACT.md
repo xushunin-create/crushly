@@ -1,119 +1,146 @@
 # Crushly Backend Contract (Supabase)
 
-The schema, RLS policies and RPCs in `supabase/migrations/` implement this document. The iOS live services (`Crushly/Services/Live/`) call only what is listed here. If you change a signature, update this file, the migration, and the Swift DTO together.
+Implemented by `supabase/migrations/` (the current model is `20261116000000_campus_spaces.sql`, built on the two
+earlier migrations). Design rationale: [CAMPUS_SPACES_DESIGN.md](CAMPUS_SPACES_DESIGN.md). If you change a signature,
+update this file, the migration, the SQL tests and the Swift DTOs together.
 
-Conventions: `snake_case` everywhere; timestamps are `timestamptz` serialized as ISO-8601; every RPC is `security definer`, `set search_path = public`, granted to `authenticated` only, and resolves the caller via `auth.uid()`. Errors are raised as `raise exception using errcode = 'P0001', message = '<code>'` where `<code>` is one of the error codes in §5, so clients can map them.
+Conventions: `snake_case`; timestamps are `timestamptz` (ISO-8601). Every RPC is `security definer`,
+`search_path = public`, executable by `authenticated` only, and resolves the caller with `auth.uid()`. Errors are
+raised as `P0001` with the message set to an error code from §6.
 
-## 1. Settings
+> **Status (2026-11-16):** the SQL is implemented and tested (`supabase/tests/run.sh`). The iOS live service
+> (`Crushly/Services/Live`) still calls the old Pulse RPCs until Phase 4, so **live mode is broken until then**.
+> Demo mode is unaffected.
 
-`app_settings(key text primary key, value jsonb)`, readable by `authenticated`. Seeded keys:
+## 1. Settings (`app_settings`, readable by `authenticated`)
 
-| key | default |
-|---|---|
-| `allowed_email_domains` | `["usc.edu"]` |
-| `pulse_durations_minutes` | `[30, 60]` |
-| `signals_per_session` | `5` |
-| `signal_validity_hours` | `72` |
-| `encounter_window_hours` | `24` |
-| `receipt_delay_min_seconds` / `receipt_delay_max_seconds` | `120` / `600` |
-| `receipt_time_bucket_minutes` | `15` |
-| `receipt_space_min_crowd` | `5` |
-| `connection_confirm_hours` | `24` |
-| `connection_inactive_days` | `7` |
-| `find_request_timeout_minutes` / `find_active_minutes` | `10` / `30` |
-| `shield_durations_minutes` | `[60, 240, 1440]` (null = until turned off) |
-| `require_own_pulse_to_view_around` | `true` |
-| `hide_rejected_photos` | `true` |
-
-Helper: `setting_int(key) returns int`, `setting_json(key) returns jsonb`.
-
-## 2. Tables
-
-Enums: `availability ('meet_now','connect_later','either')`, `intention ('something_serious','something_casual','new_friends','figuring_it_out')`, `review_status ('pending','approved','rejected')`, `selfie_status ('not_started','pending','verified','rejected')`, `space_kind ('place','event')`, `signal_status ('pending','matched','expired','withdrawn')`, `match_kind ('heart_sync','crossed_hearts')`, `connection_status ('pending_confirmation','met_tonight','find_later','expired','removed')`, `connection_action_kind ('coffee','study_break','starter','instagram_exchange')`, `request_status ('pending','accepted','declined','cancelled','timed_out','completed')`, `report_category ('harassment','fake_profile','under_18','unsafe_behavior','hate_speech','spam','other')`, `report_status ('open','reviewing','actioned','dismissed')`.
-
-| Table | Purpose | Client access (RLS) |
+| Key | Default | Meaning |
 |---|---|---|
-| `profiles` | Discoverable fields: `id (= auth.users.id)`, `first_name`, `age` (≥18), `pronouns`, `gender`, `interests text[]` (exactly 3), `vibe_tags text[]` (≤5), `prompt_question`, `prompt_answer` (≤160), `intention`, `availability`, `photo_paths text[]` (≤6), `photo_review_status` (server-only), `selfie_status` (server-only), `university_domain` (server-only), `is_complete bool` (generated), `created_at`, `updated_at`. | Owner: select / insert / update except server-only columns (enforced by trigger). Others: no direct select — profiles of others are only returned by RPCs that apply visibility rules. |
-| `profile_private` | `user_id`, `instagram_handle`, `age_confirmed_at`, `terms_version`, `terms_accepted_at`, `privacy_version`, `privacy_accepted_at`, `verified_only_discovery bool`. | Owner only. |
-| `campus_spaces` | `id`, `name`, `kind`, `subtitle`, `starts_at`, `ends_at`, `is_active`, `sort_order`. | `authenticated` select where `is_active`. |
-| `space_codes` | `space_id`, `code` (unique, upper-case). | None (resolved by `enter_space_code`). |
-| `pulse_sessions` | `id`, `user_id`, `space_id`, `availability`, `started_at`, `expires_at`, `paused_at`, `ended_at`, `end_reason ('user','expired','shield','account')`, `signals_sent int`. One live (`ended_at is null`) row per user (partial unique index). | Owner select. Writes via RPC only. |
-| `encounters` | `viewer_id`, `seen_id`, `space_id`, `last_seen_at`; PK (viewer, seen). Upserted by `around_profiles`. | Viewer select. |
-| `heart_signals` | `id`, `sender_id`, `recipient_id`, `session_id`, `space_id`, `created_at`, `expires_at`, `visible_at`, `space_disclosable bool`, `status`, `match_id`. Partial unique (sender, recipient) where status = 'pending'. | **Sender** select own rows. **Recipient: no policy, no grant.** Never in a realtime publication. |
-| `matches` | `id`, `user_a < user_b` (unique pair), `kind`, `space_id`, `created_at`. | Participants select. |
-| `connections` | `match_id` PK, `status`, `confirm_by`, `active_until`, `confirmed_at`, `last_activity_at`, `removed_by`, `updated_at`. | Participants select. Writes via RPC. |
-| `connection_actions` | `id`, `match_id`, `actor_id`, `kind`, `payload jsonb` (e.g. starter id), `status request_status`, `created_at`, `responded_at`. | Participants select. Writes via RPC. |
-| `find_requests` | `id`, `match_id`, `requester_id`, `status`, `meeting_point`, `created_at`, `respond_by`, `accepted_at`, `active_until`, `ended_at`, `end_reason`. | Participants select. Writes via RPC. |
-| `blocks` | `blocker_id`, `blocked_id`, `created_at`. | Blocker select / delete. Blocked user: nothing. |
-| `shield_states` | `user_id` PK, `started_at`, `active_until` (null = indefinite), `ended_at`. | Owner select. Writes via RPC. |
-| `reports` | `id`, `reporter_id`, `reported_id`, `category`, `details`, `context jsonb`, `status`, `created_at`, `reviewed_at`, `reviewer_note`. | Reporter: insert via RPC only, no select. Reported user: nothing. Moderators via service role / dashboard. |
-| `notification_prefs` | `user_id` PK, `anonymous_signals`, `heart_sync`, `crossed_hearts`, `find_requests`, `connection_reminders`, `connection_expiry`, `pulse_expiry`, `campus_events` (bools, default true), `signals_muted_until`. | Owner select / upsert. |
-| `device_tokens` | `user_id`, `token` unique, `platform`, `apns_env ('sandbox','production')`, `updated_at`. | Owner insert / delete / select. |
-| `notification_outbox` | `id`, `user_id`, `kind`, `dedupe_key` unique, `payload jsonb`, `deliver_after`, `sent_at`, `cancelled_at`, `attempts`. | None (server only). |
-| `analytics_events` | `id`, `user_id`, `name` (checked against allow-list), `props jsonb` (≤1 KB), `created_at`. | Insert via `track_event` only. |
+| `allowed_email_domains` | `["usc.edu"]` | Sign-up domain allow-list |
+| `participation_lease_seconds` | `60` | Hard cap on a participation lease |
+| `evidence_max_accuracy_m` | `30` | Worst acceptable horizontal accuracy |
+| `evidence_max_fix_age_seconds` | `15` | Max age of a moving fix when sent |
+| `evidence_stationary_max_fix_age_seconds` | `300` | Max age of a re-cited fix while Core Location reports stationary |
+| `allow_draft_spaces` | `false` | Dev/staging only: allow `draft` spaces |
+| `discovery_min_participants` | `4` | Low-population safeguard (counts the caller) |
+| `discovery_max_results` | `8` | Max candidates per discovery call |
+| `interests_per_session` | `5` | Interests per visit |
+| `receipt_delay_min_seconds` / `_max_` | `30` / `90` | Random delay before an anonymous receipt appears |
+| `pause_durations_minutes` | `[60, 240, 1440]` | Offered pause lengths (null = until resumed) |
+| `message_max_chars` | `2000` | |
+| `report_evidence_retention_days` | `90` | |
+| `deletion_tombstone_retention_days` | `14` | Should be at least the database backup retention |
+| `rate_limits` | see migration | `bucket -> [[max, window_seconds], ...]` for `open`, `renew`, `discover`, `interest`, `message`, `report` |
+| `hide_rejected_photos` | `true` | |
+| `analytics_allowed_events` | see migration | No presence, participation, interest or match events |
 
-Storage bucket `profile-photos` (private). Path `<user_id>/<uuid>.jpg`. Owner: insert / update / delete within own folder. Read: owner, or any authenticated user for whom `can_view_profile(owner)` is true.
+## 2. Tables and client access
 
-## 3. Visibility predicates (SQL helpers, not granted to clients)
+| Table | Purpose | Client access |
+|---|---|---|
+| `profiles` | Public profile fields (unchanged) | Owner read/write (server-only columns guarded) |
+| `profile_private` | Terms/age confirmation, `verified_only_discovery`, matching prefs: `match_gender` (`woman`/`man`/`nonbinary`), `show_me text[]`, `age_min`, `age_max` | Owner read. Prefs written only by `update_match_preferences` |
+| `campus_spaces` | `slug` (stable id), `name`, `subtitle`, `boundary` (GeoJSON Polygon), `boundary_version`, `source_refs`, `validation_status` (`draft`/`field_validated`), `enabled`, `sort_order` | Read where `enabled` and (`field_validated` or `allow_draft_spaces`) |
+| `participation_state` | `consent_epoch`, `matching_paused`, `paused_until` | None (via RPC) |
+| `participation_sessions` | One row per user at most: space, boundary version, epoch, lease, last seq/fix, `interests_sent`. **Deleted when it ends.** | None |
+| `discovery_exposures` | (viewer session, target session) pairs that discovery returned. Cascades with sessions | None |
+| `interests` | (sender session, recipient session, `visible_at`). Cascades with sessions | None |
+| `matches` | `user_a < user_b`, `created_at`, per-side read markers. **No place.** | None |
+| `messages` | Client-generated `id`, `match_id`, `sender_id`, `body`, `payload_version` (1; 2+ reserved for E2EE), `created_at` | None |
+| `report_evidence` | Messages the reporter selected; `purge_after` | None (service role) |
+| `deletion_tombstones` | `match_id`, `deleted_at` only | None (service role) |
+| `rate_limits` | Fixed-window counters | None |
+| `notification_prefs` | `new_matches`, `messages` | None (via RPC) |
+| `blocks`, `reports`, `device_tokens`, `notification_outbox`, `analytics_events` | As before | As before |
 
-- `is_blocked_between(a, b)` → block exists in either direction.
-- `is_shielded(u)` → shield row with `ended_at is null` and (`active_until is null` or `> now()`).
-- `live_session(u)` → the user's session with `ended_at is null`, `paused_at is null`, `expires_at > now()`.
-- `is_discoverable_to(viewer, target)` → target ≠ viewer, both profiles complete, target has `live_session` in the same space as the viewer's `live_session`, neither shielded, not blocked between, target photo not rejected (when `hide_rejected_photos`), and verified-only filters satisfied on both sides (`verified_only_discovery` means "only show me to, and only show me, people whose `photo_review_status = 'approved'`").
-- `can_view_profile(viewer, target)` → discoverable now, OR an encounter within `encounter_window_hours`, OR a match exists — and never if blocked between.
+Storage bucket `profile-photos` (private). Readers: the owner, a matched user, or a user who `can_match` right now.
+
+## 3. Internal predicates (not executable by clients)
+
+- `can_match(a, b)`: both profiles complete with terms and preferences; unexpired sessions in the same space and
+  boundary version; each satisfies the other's `show_me` and age range; photo and verified-only rules; neither
+  paused; no block either way.
+- `check_evidence(evidence, prev_fix_ts_ms, allow_stationary)`: shape, accuracy, fix age, and monotonic fix time
+  (a stationary renewal may re-cite the last fix).
+- `end_participation(u)`: deletes the session (interests and exposures cascade) and increments `consent_epoch`.
+- `delete_match(id)`: deletes the match (messages cascade), cancels queued pushes, writes a tombstone.
 
 ## 4. RPCs
 
-| RPC | Params | Returns | Rules |
-|---|---|---|---|
-| `my_state()` | – | `jsonb {profile, private, pulse, shield, prefs, settings}` | One call to hydrate the app. `pulse` is the live session (ended_at null) with server `now`. |
-| `upsert_profile(p jsonb)` | discoverable fields | `profiles` row | Validates lengths / counts; ignores server-only fields. |
-| `accept_terms(terms_version text, privacy_version text, age_confirmed bool)` | | void | `age_confirmed` must be true. |
-| `start_pulse(space_id uuid, duration_minutes int, until_event_end bool, availability availability)` | | session row | Requires complete profile, accepted terms, not shielded, no live session (ends any paused/stale one). Duration ∈ `pulse_durations_minutes`, or event end (space must have a future `ends_at`). |
-| `pause_pulse()` / `resume_pulse()` / `end_pulse()` | | session row / void | Resume fails with `session_expired` if `expires_at <= now()`. Pause does not extend expiry. |
-| `enter_space_code(code text)` | | `campus_spaces` row | Case-insensitive; `invalid_code` if unknown or inactive. |
-| `around_profiles()` | | setof `public_profile` (§4.1) | Caller must have a live session (when `require_own_pulse_to_view_around`). Returns targets where `is_discoverable_to(caller, target)`. Upserts encounters. Order by stable hash of `(caller session id, target id)`. |
-| `recent_encounters()` | | setof `public_profile` | Encounters within window that are not currently discoverable and still pass `can_view_profile`. |
-| `send_heart_signal(recipient uuid)` | | `jsonb {result: 'sent'|'matched', match_id, remaining}` | See §4.2. |
-| `my_signal_receipts()` | | setof `{id, received_bucket timestamptz, space_name text|null}` | Recipient view: pending, `visible_at <= now()`, not expired, sender not blocked by/blocking caller, caller not shielded at send. **No sender id, no exact time, no session, no distance.** `space_name` only if `space_disclosable`. |
-| `my_sent_signals()` | | setof `{id, recipient public_profile, created_at, expires_at, status}` | |
-| `my_matches()` | | setof `{match_id, kind, created_at, space_name, other public_profile, connection connections-row, open_find find_requests-row|null, actions connection_actions[]}` | Blocked pairs excluded. |
-| `set_connection_status(match_id, status)` | `met_tonight`/`find_later`/`removed` | connection row | Confirms if pending; sets `active_until = now + inactive_days`. |
-| `send_connection_action(match_id, kind, payload)` / `respond_connection_action(action_id, accept bool)` | | action row | One pending action per kind per match. Counts as activity. |
-| `connection_instagram(match_id)` | | `text|null` | Other user's handle only if an `instagram_exchange` action in that match is `accepted`. |
-| `request_find(match_id, meeting_point text)` / `respond_find(request_id, accept bool)` / `cancel_find(request_id)` / `complete_find(request_id)` | | find row | Both must have live sessions, neither shielded, not blocked. Accept sets `active_until`. Ends automatically if either ends Pulse, enters Shield, or blocks. |
-| `enter_shield(duration_minutes int|null)` / `exit_shield()` | | shield row / void | Enter: ends live session (`end_reason='shield'`), cancels open find requests, no notifications to others. Exit never starts Pulse. |
-| `block_user(target uuid)` / `unblock_user(target uuid)` / `my_blocks()` | | void / setof `{user_id, first_name, created_at}` | Block also cancels open find requests and withdraws pending signals in both directions. |
-| `report_user(target uuid, category report_category, details text, context jsonb)` | | `uuid` | Also blocks the target (default on). |
-| `update_notification_prefs(p jsonb)` / `register_device(token, platform, apns_env)` / `unregister_device(token)` | | | |
-| `track_event(name text, props jsonb)` | | void | Allow-listed names only. |
-| `server_now()` | | `timestamptz` | For clock-skew correction. |
+### Account
+| RPC | Returns | Notes |
+|---|---|---|
+| `server_now()` | `timestamptz` | |
+| `my_state()` | `jsonb {now, profile, private, prefs, settings}` | |
+| `upsert_profile(p jsonb)`, `accept_terms(...)` | | Unchanged |
+| `update_match_preferences(p_match_gender, p_show_me text[], p_age_min, p_age_max)` | void | Validated; 18 ≤ min ≤ max ≤ 120 |
+| `update_notification_prefs(p jsonb)` | `notification_prefs` | Keys `new_matches`, `messages` |
+| `register_device`, `unregister_device`, `track_event` | | Unchanged |
 
-### 4.1 `public_profile` composite
+### Participation
+Evidence object: `{"fix_ts_ms": <device epoch ms>, "fix_age_ms": <ms>, "horizontal_accuracy_m": <m>, "stationary": <bool>}`.
 
-`id, first_name, age, pronouns, gender, interests, vibe_tags, prompt_question, prompt_answer, intention, availability, photo_paths, photo_review_status, space_id, space_name, session_paused bool`. Never includes email, domain beyond `university_domain`, private fields, coordinates, session ids, or timestamps of activity.
+| RPC | Returns | Rules / errors |
+|---|---|---|
+| `my_participation()` | `jsonb {now, consent_epoch, matching_paused, paused_until, session: {id, space_slug, boundary_version, lease_expires_at, last_seq} \| null}` | Reconcile with this on launch and foreground |
+| `open_participation(p_space_slug, p_boundary_version, p_consent_epoch, p_client_request_id, p_evidence)` | `jsonb {session_id, lease_expires_at, now}` | Idempotent on `p_client_request_id` while valid. Replaces any existing session. Errors: `matching_paused`, `consent_stale`, `profile_incomplete`, `space_unavailable`, `boundary_outdated`, `insufficient_accuracy`, `stale_evidence`, `invalid_input`, `rate_limited` |
+| `renew_participation(p_session_id, p_seq, p_evidence)` | `jsonb {session_id, lease_expires_at, now}` | `p_seq` strictly increasing. Errors: `session_expired` (final), `stale_request`, `stale_evidence`, `insufficient_accuracy`, `matching_paused`, `rate_limited` |
+| `revoke_participation()` | new `consent_epoch` (`bigint`) | Go invisible / exit / sign-out. Idempotent |
+| `set_matching_paused(p_paused, p_minutes default null)` | same as `my_participation()` | Pausing revokes; resuming never opens a session |
 
-### 4.2 `send_heart_signal` algorithm (single transaction)
+### Discovery and interest
+| RPC | Returns | Rules / errors |
+|---|---|---|
+| `discover_candidates()` | `jsonb {status: 'ok' \| 'quiet', profiles: public_profile[]}` | Caller must be participating (`not_participating`). `quiet` when fewer than `discovery_min_participants` (no count is returned). Random order, capped, rate-limited. Records exposures |
+| `express_interest(p_target)` | `jsonb {result: 'sent' \| 'matched', match_id, remaining}` | Target must currently `can_match` **and** have been shown to the caller during this visit; otherwise `not_available`. Also `not_participating`, `already_sent`, `already_matched`, `limit_reached`, `invalid_input`, `rate_limited`. Matching is atomic per pair |
+| `my_interest_receipts()` | `int` | Visible, live interests toward me this visit. No ids, times or places |
+| `my_sent_interests()` | `uuid[]` | Whom I've expressed interest in this visit |
 
-1. `caller := auth.uid()`; reject `self_signal`.
-2. `pg_advisory_xact_lock(hashtextextended(least(caller,recipient)::text || greatest(caller,recipient)::text, 0))` — serializes concurrent sends between the same pair.
-3. Caller has `live_session` (`no_live_session`), complete profile, not shielded (`shielded`); recipient not shielded (`not_available`, same message as not discoverable to avoid leaking shield state); not blocked between (`not_available`).
-4. Recipient is `is_discoverable_to(caller, recipient)` or an encounter within window (`not_available`).
-5. Session `signals_sent < signals_per_session` (`limit_reached`).
-6. No pending, unexpired signal caller → recipient (`already_signaled`); no existing match for the pair (`already_matched`).
-7. Insert signal (`visible_at = now() + random delay`, `expires_at = now() + validity`, `space_disclosable = live crowd in space ≥ min_crowd`), increment `signals_sent`.
-8. If a pending, unexpired signal recipient → caller exists: insert match (`on conflict do nothing` on the pair), kind = heart_sync if both have `live_session` in the same space else crossed_hearts; create `connections` row (`confirm_by = now + confirm_hours`); mark both signals `matched` with `match_id`; enqueue discreet notifications for both. Return `matched`.
-9. Otherwise enqueue the recipient's anonymous-signal notification at `visible_at` (respecting prefs / mute). Return `sent`.
+`public_profile` = `id, first_name, age, pronouns, gender, interests, vibe_tags, prompt_question, prompt_answer,
+intention, availability, photo_paths, photo_review_status`. It never contains a space, session, status, timestamps or email.
 
-## 5. Error codes
+### Conversations
+| RPC | Returns | Rules / errors |
+|---|---|---|
+| `my_conversations()` | rows `{match_id, created_at, other public_profile, last_message_at, last_message_preview, last_message_from_me, unread}` | Source of truth on launch and reconnect: purge any cached conversation not listed |
+| `fetch_messages(p_match_id, p_before_created_at, p_before_id, p_limit ≤ 50)` | rows `{id, sender_is_me, body, created_at}`, newest first | Keyset pagination: pass both cursor parts or neither. `not_found` for non-participants or deleted matches |
+| `send_message(p_match_id, p_client_message_id, p_body)` | `{id, created_at}` | Retry-safe: same id returns the existing row. A reused id from another sender or match gets `invalid_input`. `not_found` once the match is gone, so a queued send can't recreate it. `rate_limited` |
+| `mark_conversation_read(p_match_id)` | void | |
+| `leave_conversation(p_match_id)` | void | Ends the match and deletes all messages for both. `not_found` if already gone |
 
-`not_authenticated`, `profile_incomplete`, `terms_required`, `domain_not_allowed`, `no_live_session`, `session_expired`, `shielded`, `not_available`, `self_signal`, `limit_reached`, `already_signaled`, `already_matched`, `invalid_duration`, `invalid_code`, `invalid_input`, `not_found`, `not_permitted`, `request_expired`.
+### Safety
+| RPC | Returns | Notes |
+|---|---|---|
+| `block_user(target)` | void | Also deletes any match/conversation and pending interests between the two |
+| `unblock_user(target)`, `my_blocks()` | | Unblocking restores nothing |
+| `report_user(target, category, details, evidence_message_ids uuid[] default '{}')` | report id | Evidence must be messages from the conversation with `target` (`invalid_input` otherwise). Copied to `report_evidence` (90 days), then the user is blocked, which deletes the conversation |
 
-## 6. Scheduled maintenance
+## 5. Notifications
 
-`crushly_tick()` (pg_cron every minute): end expired sessions (`end_reason='expired'`), expire signals past `expires_at`, expire / remind connections, time out find requests, end expired shields, and enqueue reminders with dedupe keys. Read paths never depend on the tick — they compare timestamps directly — so a missed tick never exposes anyone.
+Kinds: `new_match`, `new_message`. The payload is `{match_id}` only. Lock-screen copy (in `functions/push-dispatch`) is
+"You have a new match." / "You have a new message." Message pushes collapse to one per conversation per 2 minutes.
+Relevance is re-checked at send time: the match must still exist, there must be no block, and the preference must be on.
 
-## 7. Edge functions (service role, server-side only)
+## 6. Error codes
 
-- `delete-account` — verifies the caller's JWT, deletes `profile-photos/<uid>/*`, then `auth.admin.deleteUser(uid)`; FK cascades remove dependent rows. Reports filed *by* the user are kept with `reporter_id` nulled; reports *about* the user are kept with `reported_id` nulled and a `reported_snapshot` for moderation (documented retention).
-- `push-dispatch` — drains `notification_outbox` (due, not sent, not cancelled), re-checks prefs / blocks / staleness, sends via APNs. Lock-screen copy is generic (e.g. "Someone nearby felt a spark.").
+`not_authenticated`, `invalid_input`, `not_found`, `rate_limited`, `profile_incomplete`, `matching_paused`,
+`consent_stale`, `space_unavailable`, `boundary_outdated`, `insufficient_accuracy`, `stale_evidence`, `stale_request`,
+`session_expired`, `not_participating`, `not_available`, `already_sent`, `already_matched`, `limit_reached`,
+`invalid_duration`, `domain_not_allowed`.
+
+## 7. Scheduled maintenance
+
+`crushly_tick()` (pg_cron, every minute) deletes expired sessions (interests and exposures cascade), clears
+finished timed pauses, purges report evidence and tombstones past retention, and trims old rate-limit and outbox rows.
+No read path depends on it.
+
+## 8. Known limitations (stated, not hidden)
+
+- **Location is device-reported.** The server checks plausibility (accuracy, freshness, monotonic fixes, sequence
+  numbers), not truth. A spoofed device can claim to be in a space.
+- **Inference.** Two matched people know they were in the same space at the same time. A discovery result, or a
+  `quiet` status, tells a participant something about who is or isn't in the space right now.
+- **Not end-to-end encrypted.** Messages are protected by TLS in transit and by Supabase storage encryption at rest,
+  and are reachable only through participant-checked RPCs. The service operator can read them.
+- **Backups.** Deleted rows can persist in platform backups until those backups age out. `deletion_tombstones` lets a
+  restore re-apply deletions made inside the tombstone window.

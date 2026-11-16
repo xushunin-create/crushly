@@ -1,0 +1,419 @@
+[
+ {
+  "slug": "upc-alumni-park-tommy-trojan",
+  "name": "Alumni Park & Tommy Trojan",
+  "subtitle": "Alumni Park and Hahn Plaza",
+  "boundary": {
+   "type": "MultiPolygon",
+   "coordinates": [
+    [
+     [
+      [
+       -118.2850321,
+       34.0204859
+      ],
+      [
+       -118.2849172,
+       34.0204308
+      ],
+      [
+       -118.284928,
+       34.0204141
+      ],
+      [
+       -118.2849682,
+       34.0203518
+      ],
+      [
+       -118.2848594,
+       34.0203036
+      ],
+      [
+       -118.2844278,
+       34.0201146
+      ],
+      [
+       -118.2840117,
+       34.0207902
+      ],
+      [
+       -118.2845481,
+       34.021025
+      ],
+      [
+       -118.2846553,
+       34.0209926
+      ],
+      [
+       -118.284722,
+       34.0209725
+      ],
+      [
+       -118.2850321,
+       34.0204859
+      ]
+     ]
+    ],
+    [
+     [
+      [
+       -118.285624,
+       34.0203305
+      ],
+      [
+       -118.2854974,
+       34.020274
+      ],
+      [
+       -118.2855587,
+       34.0201796
+      ],
+      [
+       -118.2854736,
+       34.0201388
+      ],
+      [
+       -118.2853644,
+       34.0200911
+      ],
+      [
+       -118.2852918,
+       34.0200604
+      ],
+      [
+       -118.285273,
+       34.0200893
+      ],
+      [
+       -118.2852308,
+       34.0200791
+      ],
+      [
+       -118.285187,
+       34.0200756
+      ],
+      [
+       -118.2851432,
+       34.0200789
+      ],
+      [
+       -118.2851009,
+       34.0200889
+      ],
+      [
+       -118.2850616,
+       34.0201053
+      ],
+      [
+       -118.2850048,
+       34.0200797
+      ],
+      [
+       -118.2849958,
+       34.0200935
+      ],
+      [
+       -118.2849413,
+       34.0201771
+      ],
+      [
+       -118.2849066,
+       34.0202306
+      ],
+      [
+       -118.2848764,
+       34.0202765
+      ],
+      [
+       -118.2848594,
+       34.0203036
+      ],
+      [
+       -118.2849682,
+       34.0203518
+      ],
+      [
+       -118.284928,
+       34.0204141
+      ],
+      [
+       -118.2849172,
+       34.0204308
+      ],
+      [
+       -118.2850321,
+       34.0204859
+      ],
+      [
+       -118.2850853,
+       34.0205081
+      ],
+      [
+       -118.2852049,
+       34.0205585
+      ],
+      [
+       -118.2854147,
+       34.0206527
+      ],
+      [
+       -118.2855523,
+       34.020445
+      ],
+      [
+       -118.285624,
+       34.0203305
+      ]
+     ]
+    ]
+   ]
+  },
+  "boundary_version": 1,
+  "validation_status": "draft",
+  "enabled": true,
+  "sort_order": 10,
+  "source_refs": [
+   {
+    "kind": "openstreetmap",
+    "way": 154906676,
+    "url": "https://www.openstreetmap.org/way/154906676",
+    "license": "ODbL, \u00a9 OpenStreetMap contributors",
+    "retrieved": "2026-11-16"
+   },
+   {
+    "kind": "openstreetmap",
+    "way": 442277347,
+    "url": "https://www.openstreetmap.org/way/442277347",
+    "license": "ODbL, \u00a9 OpenStreetMap contributors",
+    "retrieved": "2026-11-16"
+   },
+   {
+    "kind": "official_venue",
+    "url": "https://trojanevents.usc.edu/venues/outdoor-venues/specific-outdoor-venues/alumni-park/",
+    "note": "Venue diagram shows Hahn Plaza at its corner"
+   },
+   {
+    "kind": "official_venue",
+    "url": "https://trojanevents.usc.edu/venues/outdoor-venues/specific-outdoor-venues/hahn-plaza-tommy-trojan/"
+   },
+   {
+    "kind": "note",
+    "text": "Founders Park excluded: OSM tags E.F. Hutton Park old_name=Founders Park, but USC lists them as distinct adjacent venues. Needs tracing from the official diagram before inclusion."
+   }
+  ]
+ },
+ {
+  "slug": "upc-mccarthy-quad",
+  "name": "McCarthy Quad",
+  "subtitle": "Open lawn between Doheny and Leavey Libraries",
+  "boundary": {
+   "type": "Polygon",
+   "coordinates": [
+    [
+     [
+      -118.2835705,
+      34.020734
+     ],
+     [
+      -118.2835414,
+      34.0206959
+     ],
+     [
+      -118.2835432,
+      34.0206867
+     ],
+     [
+      -118.2834411,
+      34.020646
+     ],
+     [
+      -118.2834324,
+      34.0206605
+     ],
+     [
+      -118.2832566,
+      34.0205834
+     ],
+     [
+      -118.2832676,
+      34.020567
+     ],
+     [
+      -118.2831719,
+      34.020523
+     ],
+     [
+      -118.2831066,
+      34.020528
+     ],
+     [
+      -118.2827208,
+      34.0211398
+     ],
+     [
+      -118.282731,
+      34.0211916
+     ],
+     [
+      -118.283118,
+      34.0213615
+     ],
+     [
+      -118.2831818,
+      34.0213509
+     ],
+     [
+      -118.2835705,
+      34.020734
+     ]
+    ]
+   ]
+  },
+  "boundary_version": 1,
+  "validation_status": "draft",
+  "enabled": true,
+  "sort_order": 20,
+  "source_refs": [
+   {
+    "kind": "openstreetmap",
+    "way": 154906727,
+    "url": "https://www.openstreetmap.org/way/154906727",
+    "license": "ODbL, \u00a9 OpenStreetMap contributors",
+    "retrieved": "2026-11-16"
+   },
+   {
+    "kind": "official_venue",
+    "url": "https://trojanevents.usc.edu/venues/outdoor-venues/specific-outdoor-venues/mccarthy-quad/"
+   }
+  ]
+ },
+ {
+  "slug": "usc-village-great-lawn",
+  "name": "Great Lawn at USC Village",
+  "subtitle": "USC Village",
+  "boundary": {
+   "type": "Polygon",
+   "coordinates": [
+    [
+     [
+      -118.2858038,
+      34.0264677
+     ],
+     [
+      -118.2857578,
+      34.0264487
+     ],
+     [
+      -118.2852112,
+      34.0261954
+     ],
+     [
+      -118.2852111,
+      34.0266371
+     ],
+     [
+      -118.2847481,
+      34.0266403
+     ],
+     [
+      -118.2847605,
+      34.0271935
+     ],
+     [
+      -118.2847834,
+      34.0271937
+     ],
+     [
+      -118.2847835,
+      34.0272524
+     ],
+     [
+      -118.285184,
+      34.0272537
+     ],
+     [
+      -118.2852637,
+      34.0272531
+     ],
+     [
+      -118.2853412,
+      34.0272414
+     ],
+     [
+      -118.285413,
+      34.0272148
+     ],
+     [
+      -118.2854767,
+      34.0271776
+     ],
+     [
+      -118.2855323,
+      34.0271295
+     ],
+     [
+      -118.2855701,
+      34.0270701
+     ],
+     [
+      -118.2855946,
+      34.0270095
+     ],
+     [
+      -118.2856094,
+      34.0269444
+     ],
+     [
+      -118.2856269,
+      34.0268804
+     ],
+     [
+      -118.2856452,
+      34.0268179
+     ],
+     [
+      -118.2856682,
+      34.0267525
+     ],
+     [
+      -118.285691,
+      34.0266922
+     ],
+     [
+      -118.2857189,
+      34.0266294
+     ],
+     [
+      -118.2857481,
+      34.0265671
+     ],
+     [
+      -118.2858038,
+      34.0264677
+     ]
+    ]
+   ]
+  },
+  "boundary_version": 1,
+  "validation_status": "draft",
+  "enabled": true,
+  "sort_order": 30,
+  "source_refs": [
+   {
+    "kind": "openstreetmap",
+    "way": 727000078,
+    "url": "https://www.openstreetmap.org/way/727000078",
+    "license": "ODbL, \u00a9 OpenStreetMap contributors",
+    "retrieved": "2026-11-16"
+   },
+   {
+    "kind": "official_venue",
+    "url": "https://trojanevents.usc.edu/venues/outdoor-venues/specific-outdoor-venues/great-lawn-uv-space/"
+   },
+   {
+    "kind": "note",
+    "text": "USC Village Piazza not included: not mapped by name in OpenStreetMap; borders residential colleges. Trace from the official diagram (Village Plaza) and validate before adding."
+   }
+  ]
+ }
+]

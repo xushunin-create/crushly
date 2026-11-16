@@ -1,63 +1,191 @@
+-- Discovery, anonymous interest and mutual matching. Eligibility is checked at every step.
 begin;
 do $$
-declare a uuid; b uuid; c uuid; d uuid; res jsonb; res2 jsonb; v_match uuid; m record; c_row public.connections;
+declare
+  a uuid; b uuid; c uuid; d uuid; e uuid; w uuid; m uuid; old uuid;
+  r jsonb; v_ids uuid[]; v_profile jsonb; i int;
 begin
-  a := tests.make_user('a'); b := tests.make_user('b'); c := tests.make_user('c'); d := tests.make_user('d');
-  perform tests.pulse(a, 'Leavey Library'); perform tests.pulse(b, 'Leavey Library');
+  perform tests.make_space('quad');
+  perform tests.make_space('lawn');
+  a := tests.make_user('ma'); b := tests.make_user('mb'); c := tests.make_user('mc'); d := tests.make_user('md');
+  e := tests.make_user('me_other_space');
 
-  -- Heart Sync: both live in the same space.
-  perform tests.login(a); res := public.send_heart_signal(b);
-  perform tests.login(b); res2 := public.send_heart_signal(a);
-  perform tests.assert(res->>'result' = 'sent' and res2->>'result' = 'matched' and res2->>'match_id' is not null,
-                       'reciprocal signal returns matched with match_id');
-  v_match := (res2->>'match_id')::uuid;
+  -- Invisible users can't browse --------------------------------------------------------------
+  perform tests.login(a);
+  perform tests.expect_error('select public.discover_candidates()', 'not_participating', 'invisible user cannot browse candidates');
+  perform tests.expect_error(format('select public.express_interest(%L)', b), 'not_participating', 'invisible user cannot express interest');
+
+  -- Low-population safeguard ------------------------------------------------------------------
+  perform tests.participate(a, 'quad'); perform tests.participate(b, 'quad'); perform tests.participate(c, 'quad');
+  perform tests.login(a);
+  r := public.discover_candidates();
+  perform tests.assert(r->>'status' = 'quiet' and r->'profiles' = '[]'::jsonb, 'fewer than 4 participants: nothing shown');
+  perform tests.assert(not r ? 'count', 'no participant count is ever returned');
+  perform tests.reset_rate_limits();
+
+  perform tests.participate(d, 'quad');
+  perform tests.participate(e, 'lawn');
+  perform tests.login(a);
+  r := public.discover_candidates();
+  perform tests.assert(r->>'status' = 'ok', 'four participants: discovery opens');
+  v_ids := array(select (x->>'id')::uuid from jsonb_array_elements(r->'profiles') x);
+  perform tests.assert(v_ids @> array[b, c, d] and cardinality(v_ids) = 3, 'sees exactly the other eligible participants in the same space');
+  perform tests.assert(not (e = any (v_ids)), 'never sees participants in another space');
+  v_profile := r->'profiles'->0;
+  perform tests.assert(not (v_profile ? 'space_id' or v_profile ? 'space_name' or v_profile ? 'session_paused'
+                            or v_profile ? 'lease_expires_at' or v_profile ? 'email'),
+                       'candidate profiles carry no space, session, status or email');
+
+  -- Rate limit: one discovery per 15 s.
+  perform tests.expect_error('select public.discover_candidates()', 'rate_limited', 'discovery is rate-limited');
+  perform tests.reset_rate_limits();
+
+  -- Result cap.
   perform tests.logout();
-  perform tests.assert((select count(*) from public.matches) = 1, 'exactly one match');
-  perform tests.assert((select kind from public.matches where id = v_match) = 'heart_sync', 'same space, both live -> heart_sync');
-  perform tests.assert((select user_a < user_b from public.matches where id = v_match), 'user_a < user_b');
-  perform tests.assert((select count(*) from public.connections where match_id = v_match and status = 'pending_confirmation'
-                        and confirm_by = now() + interval '24 hours') = 1, 'exactly one connection, confirm_by +24h');
-  perform tests.assert((select count(*) from public.heart_signals where status = 'matched' and match_id = v_match) = 2,
-                       'both signals marked matched with match_id');
-  perform tests.assert((select count(*) from public.notification_outbox where kind = 'heart_sync') = 2, 'both notified of heart_sync');
-  perform tests.assert((select count(*) from public.notification_outbox where kind = 'anonymous_signal' and cancelled_at is null) = 0,
-                       'superseded anonymous receipt notification cancelled');
-
+  update public.app_settings set value = '2' where key = 'discovery_max_results';
   perform tests.login(a);
-  perform tests.expect_error(format('select public.send_heart_signal(%L)', b), 'already_matched', 'no second match per pair');
-  select * into m from public.my_matches();
-  perform tests.assert(m.match_id = v_match and m.kind = 'heart_sync' and (m.other).id = b and m.space_name = 'Leavey Library'
-                       and (m.connection).status = 'pending_confirmation' and m.open_find is null and cardinality(m.actions) = 0,
-                       'my_matches row shape');
-  perform tests.assert((select status from public.my_sent_signals() where (recipient).id = b) = 'matched', 'sent signal shows matched');
+  perform tests.assert(jsonb_array_length(public.discover_candidates()->'profiles') = 2, 'discovery returns at most the configured cap');
+  perform tests.logout();
+  update public.app_settings set value = '8' where key = 'discovery_max_results';
+  perform tests.login(a);
+  perform tests.reset_rate_limits();
+
+  -- Preferences apply in both directions ------------------------------------------------------
+  perform tests.logout();
+  update public.profile_private set show_me = array['woman'] where user_id = b;   -- b only wants women; a is nonbinary
+  perform tests.login(a);
+  v_ids := array(select (x->>'id')::uuid from jsonb_array_elements(public.discover_candidates()->'profiles') x);
+  perform tests.assert(not (b = any (v_ids)), 'a does not see b when b''s preferences exclude a');
+  perform tests.expect_error(format('select public.express_interest(%L)', b), 'not_available', 'cannot express interest against preferences');
+  perform tests.reset_rate_limits();
+  perform tests.logout();
+  update public.profile_private set show_me = array['man','nonbinary','woman'], age_min = 25 where user_id = b;  -- a is 20
+  perform tests.login(a);
+  v_ids := array(select (x->>'id')::uuid from jsonb_array_elements(public.discover_candidates()->'profiles') x);
+  perform tests.assert(not (b = any (v_ids)), 'age range is enforced');
+  perform tests.reset_rate_limits();
+  perform tests.logout();
+  update public.profile_private set age_min = 18 where user_id = b;
+
+  -- One-sided interest stays anonymous and tied to the visit -------------------------------------
+  perform tests.login(a);
+  r := public.express_interest(b);
+  perform tests.assert(r->>'result' = 'sent' and (r->>'remaining')::int = 4, 'interest sent, 4 left');
+  perform tests.expect_error(format('select public.express_interest(%L)', b), 'already_sent', 'no duplicate interest in a visit');
+  perform tests.assert(public.my_sent_interests() = array[b], 'sender sees whom they''ve expressed interest in');
   perform tests.login(b);
-  perform tests.assert((select count(*) from public.my_signal_receipts()) = 0, 'matched signal is no longer an anonymous receipt');
+  perform tests.assert(public.my_interest_receipts() = 0, 'receipt hidden during the random delay');
+  perform tests.reveal_interests();
+  perform tests.assert(public.my_interest_receipts() = 1, 'recipient gets an anonymous count, nothing else');
 
-  -- Crossed Hearts: D signals C, D leaves; C signals D via encounter.
-  perform tests.pulse(c, 'Tutor Campus Center'); perform tests.pulse(d, 'Tutor Campus Center');
-  perform tests.login(c); perform tests.assert((select count(*) from public.around_profiles()) = 1, 'C sees D (records encounter)');
-  perform tests.login(d); perform tests.assert((select count(*) from public.around_profiles()) = 1, 'D sees C');
-  res := public.send_heart_signal(c);
-  perform tests.assert(res->>'result' = 'sent', 'D -> C sent');
-  perform public.end_pulse();
-  perform tests.login(c);
-  perform tests.assert((select count(*) from public.around_profiles()) = 0, 'D gone from Around after ending Pulse');
-  res := public.send_heart_signal(d);
-  perform tests.assert(res->>'result' = 'matched', 'C -> D via encounter matches');
-  perform tests.assert((select kind from public.matches where id = (res->>'match_id')::uuid) = 'crossed_hearts',
-                       'recipient session ended -> crossed_hearts');
-  perform tests.assert((select (other).first_name from public.my_matches() where kind = 'crossed_hearts') = 'D',
-                       'C sees D in my_matches');
-  perform tests.assert((select space_name from public.my_matches() where kind = 'crossed_hearts') = 'Tutor Campus Center',
-                       'crossed hearts labelled with encounter space');
+  -- Interest disappears when the sender's visit ends.
+  perform tests.expire(a);
+  perform tests.login(b);
+  perform tests.assert(public.my_interest_receipts() = 0, 'receipt disappears when the sender''s lease lapses');
+  perform tests.participate(a, 'quad');
+  perform tests.assert(public.my_sent_interests() = '{}', 'new visit starts with no interests');
+  perform tests.login(b);
+  r := public.express_interest(a);
+  perform tests.assert(r->>'result' = 'sent', 'b''s interest after a re-entered does NOT match the expired one');
+  perform tests.assert(tests.n('select 1 from public.matches') = 0, 'expired interest never becomes a match');
 
-  -- Connection lifecycle.
+  -- Mutual interest creates exactly one match --------------------------------------------------
   perform tests.login(a);
-  c_row := public.set_connection_status(v_match, 'met_tonight');
-  perform tests.assert(c_row.status = 'met_tonight' and c_row.confirmed_at is not null
-                       and c_row.active_until = now() + interval '7 days', 'met_tonight confirms, active 7 days');
-  perform tests.expect_error(format($q$select public.set_connection_status(%L, 'expired')$q$, v_match), 'invalid_input', 'clients cannot set expired');
+  r := public.express_interest(b);
+  perform tests.assert(r->>'result' = 'matched', 'reciprocal interest matches');
+  m := (r->>'match_id')::uuid;
+  perform tests.assert(tests.n('select 1 from public.matches') = 1, 'exactly one match row');
+  perform tests.assert(tests.n(format('select 1 from public.interests i join public.participation_sessions s on s.id = i.sender_session_id where s.user_id in (%L, %L)', a, b)) = 0, 'matched interests are deleted');
+  perform tests.assert(tests.n(format($q$select 1 from public.notification_outbox where kind = 'new_match' and payload->>'match_id' = %L$q$, m)) = 2,
+                       'both get a generic new-match notification');
+  perform tests.assert((select count(*) from information_schema.columns
+                         where table_schema = 'public' and table_name = 'matches'
+                           and column_name in ('space_id', 'kind', 'space_name')) = 0, 'matches store no place');
+  perform tests.expect_error(format('select public.express_interest(%L)', b), 'already_matched', 'no second match for the pair');
+  perform tests.reset_rate_limits();
+  v_ids := array(select (x->>'id')::uuid from jsonb_array_elements(public.discover_candidates()->'profiles') x);
+  perform tests.assert(not (b = any (v_ids)), 'existing matches are not shown as candidates');
+  perform tests.reset_rate_limits();
+
+  -- Match creation fails when either session is no longer valid --------------------------------
   perform tests.login(c);
-  perform tests.expect_error(format($q$select public.set_connection_status(%L, 'find_later')$q$, v_match), 'not_found', 'non-participant');
+  perform public.express_interest(d);
+  perform tests.expire(c);
+  perform tests.login(d);
+  perform tests.expect_error(format('select public.express_interest(%L)', c), 'not_available', 'no match when the other session expired');
+  perform tests.assert(tests.n(format('select 1 from public.matches where user_a = least(%L::uuid, %L::uuid) and user_b = greatest(%L::uuid, %L::uuid)', c, d, c, d)) = 0, 'no c-d match');
+  perform tests.participate(c, 'quad');
+
+  perform tests.login(c);
+  perform public.express_interest(d);
+  perform tests.login(d);
+  perform public.revoke_participation();
+  perform tests.expect_error(format('select public.express_interest(%L)', c), 'not_participating', 'no match after going invisible');
+  perform tests.participate(d, 'quad');
+
+  -- Paused / different space / blocked ----------------------------------------------------------
+  perform tests.login(c);
+  perform public.set_matching_paused(true);
+  perform tests.login(d);
+  perform tests.expect_error(format('select public.express_interest(%L)', c), 'not_available', 'paused user is not available');
+  perform tests.login(c);
+  perform public.set_matching_paused(false);
+  perform tests.participate(c, 'lawn');
+  perform tests.login(d);
+  perform tests.expect_error(format('select public.express_interest(%L)', c), 'not_available', 'different space is not available');
+  perform tests.participate(c, 'quad');
+  perform tests.login(d);
+  perform public.express_interest(c);
+  perform tests.login(c);
+  perform public.block_user(d);
+  perform tests.assert(tests.n(format('select 1 from public.interests i join public.participation_sessions s on s.id = i.sender_session_id where s.user_id = %L', d)) = 0, 'blocking withdraws pending interests');
+  perform tests.reset_rate_limits();
+  v_ids := array(select (x->>'id')::uuid from jsonb_array_elements(public.discover_candidates()->'profiles') x);
+  perform tests.assert(not (d = any (v_ids)), 'blocker does not see blocked user');
+  perform tests.login(d);
+  perform tests.reset_rate_limits();
+  v_ids := array(select (x->>'id')::uuid from jsonb_array_elements(public.discover_candidates()->'profiles') x);
+  perform tests.assert(not (c = any (v_ids)), 'blocked user does not see blocker');
+  perform tests.expect_error(format('select public.express_interest(%L)', c), 'not_available', 'blocked pair cannot match');
+  perform tests.login(c);
+  perform public.unblock_user(d);
+  perform tests.reset_rate_limits();
+
+  -- Per-visit interest limit ------------------------------------------------------------------
+  perform tests.logout();
+  update public.app_settings set value = '1' where key = 'interests_per_session';
+  perform tests.participate(d, 'quad');   -- fresh visit
+  perform public.express_interest(c);
+  perform tests.expect_error(format('select public.express_interest(%L)', a), 'limit_reached', 'per-visit interest limit');
+  perform tests.logout();
+  update public.app_settings set value = '5' where key = 'interests_per_session';
+  perform tests.login(d);
+
+  -- Probing a known user id without discovery reveals nothing ---------------------------------
+  w := tests.make_user('prober');
+  perform tests.participate(w, 'quad', false);
+  perform tests.expect_error(format('select public.express_interest(%L)', a), 'not_available',
+                             'cannot express interest in someone discovery has not shown you (no presence probing)');
+  perform tests.reset_rate_limits();
+  perform tests.login(w);
+  r := public.discover_candidates();
+  perform tests.assert(a = any (array(select (x->>'id')::uuid from jsonb_array_elements(r->'profiles') x)), 'prober is shown a once discovery runs');
+  perform tests.assert(public.express_interest(a)->>'result' = 'sent', 'after being shown, interest works');
+  perform tests.login(d);
+
+  -- Self / unknown -------------------------------------------------------------------------------
+  perform tests.expect_error(format('select public.express_interest(%L)', d), 'invalid_input', 'cannot express interest in yourself');
+  perform tests.expect_error(format('select public.express_interest(%L)', gen_random_uuid()), 'not_available', 'unknown user is just not available');
+
+  -- Interest rate limit ------------------------------------------------------------------------
+  perform tests.reset_rate_limits();
+  w := tests.make_user('spammer');
+  perform tests.participate(w, 'quad');
+  -- Failed calls roll back their own counter increment, so preload the window:
+  perform tests.logout();
+  insert into public.rate_limits (user_id, bucket, window_start, hits)
+  values (w, 'interest:3600', to_timestamp(floor(extract(epoch from now()) / 3600) * 3600), 30);
+  perform tests.login(w);
+  perform tests.expect_error(format('select public.express_interest(%L)', a), 'rate_limited', 'interests are rate-limited per hour');
 end $$;
 rollback;

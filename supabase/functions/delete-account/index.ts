@@ -3,8 +3,9 @@
 // Runs server-side with the service role (never shipped in the app). Steps:
 //   1. Verify the caller's own access token — a user can only delete themselves.
 //   2. Remove every object under profile-photos/<uid>/ (storage ownership would otherwise block deletion).
-//   3. Delete the auth user. Foreign keys cascade to profiles, sessions, signals, matches, connections,
-//      find requests, blocks, shield state, prefs, device tokens, outbox rows and analytics.
+//   3. Delete the auth user. Foreign keys cascade to profiles, participation state and sessions,
+//      interests, discovery exposures, matches, messages, blocks, prefs, device tokens, rate-limit
+//      counters, outbox rows and analytics.
 //      Reports are retained for moderation with user ids nulled and a profile snapshot
 //      (see migration §4.2 and docs/MODERATION.md).
 //
