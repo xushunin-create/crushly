@@ -2,37 +2,24 @@ import SwiftUI
 
 struct MeView: View {
     @Environment(AppState.self) private var state
-    @State private var showShield = false
-    @State private var confirmDelete = false
     @State private var verifiedOnly = false
     @State private var sounds = FeedbackService.shared.soundsEnabled
-    @AppStorage(PulseDefaults.durationKey) private var defaultDuration = 30
+    @State private var legal: TermsView.LegalDoc?
 
     var body: some View {
         List {
             Section {
                 profileCard
-                NavigationLink("Edit profile") { ProfileEditorView(mode: .edit) }
+                NavigationLink("Edit profile & matching preferences") { ProfileEditorView(mode: .edit) }
             }
 
             Section {
-                if state.isShielded {
-                    AsyncButton { await state.perform { try await state.exitShield() } } label: {
-                        Label("Leave Protect My Heart", systemImage: "shield.slash")
-                    }
-                } else {
-                    Button { showShield = true } label: {
-                        Label("Protect My Heart", systemImage: "shield.lefthalf.filled")
-                            .foregroundStyle(Theme.Palette.plum)
-                    }
+                NavigationLink { PrivacySettingsView() } label: {
+                    Label(state.isPausedNow ? "Privacy & safety · matching paused" : "Privacy & safety", systemImage: "hand.raised.square")
                 }
-                if state.pulse != nil {
-                    AsyncButton { await state.perform { try await state.endPulse() } } label: {
-                        Label("Turn off Pulse and exit space", systemImage: "eye.slash")
-                    }
-                }
-            } header: { Text("Safety") } footer: {
-                Text("Protect My Heart hides you immediately, ends your session and pauses signals. No one is told.")
+                .accessibilityIdentifier("me.privacy")
+            } footer: {
+                Text("Pause campus matching, location access, notifications, blocked people and account deletion.")
             }
 
             Section("Discovery") {
@@ -45,29 +32,8 @@ struct MeView: View {
                 }
                 .onChange(of: verifiedOnly) { _, value in
                     guard value != state.account.verifiedOnlyDiscovery else { return }
-                    Task { await state.perform { try await state.savePrivate(instagram: state.account.instagramHandle, verifiedOnly: value) } }
+                    Task { await state.perform { try await state.saveVerifiedOnly(value) } }
                 }
-                LabeledContent("Discovery range", value: "Campus Space")
-                Text("Distance-based discovery isn't available yet. You only see people in the same Campus Space.")
-                    .font(Theme.Typeface.footnote).foregroundStyle(Theme.Palette.inkSoft)
-            }
-
-            Section {
-                Picker("Default session length", selection: $defaultDuration) {
-                    ForEach(state.rules.pulseDurationsMinutes, id: \.self) { Text("\($0) minutes").tag($0) }
-                }
-                Picker("Default availability", selection: Binding(
-                    get: { state.profile?.availability ?? .either },
-                    set: { value in
-                        guard var profile = state.profile, profile.availability != value else { return }
-                        profile.availability = value
-                        Task { await state.perform { try await state.saveProfile(profile) } }
-                    }
-                )) {
-                    ForEach(Availability.allCases) { Text($0.title).tag($0) }
-                }
-            } header: { Text("Pulse") } footer: {
-                Text("Used when you Enter the Radius. You can change both each time.")
             }
 
             Section {
@@ -76,9 +42,7 @@ struct MeView: View {
                     .onChange(of: sounds) { _, value in FeedbackService.shared.soundsEnabled = value }
             } header: { Text("Alerts") }
 
-            Section("Privacy") {
-                NavigationLink("Safety tips") { SafetyTipsView() }
-                NavigationLink("Blocked people") { BlockedListView() }
+            Section("Legal") {
                 Button("Terms of Service") { legal = .terms }
                 Button("Privacy Policy") { legal = .privacy }
             }
@@ -87,7 +51,6 @@ struct MeView: View {
                 LabeledContent("Email", value: state.email)
                 LabeledContent("Email status", value: "Verified (USC)")
                 Button("Sign out") { Task { await state.signOut() } }
-                Button("Delete account and data", role: .destructive) { confirmDelete = true }
             }
 
             if state.demo != nil { DemoControlsSection() }
@@ -96,19 +59,9 @@ struct MeView: View {
         .background(Theme.Palette.paper)
         .foregroundStyle(Theme.Palette.ink, Theme.Palette.inkSoft)   // section headers/footers readable on paper
         .navigationTitle("Me")
-        .sheet(isPresented: $showShield) { ShieldSheet().presentationDetents([.medium]) }
         .sheet(item: $legal) { doc in LegalDocumentView(title: doc.rawValue) }
-        .confirmationDialog("Delete your account?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("Delete permanently", role: .destructive) {
-                Task { await state.perform { try await state.deleteAccount() } }
-            }
-        } message: {
-            Text("Your profile, photos, signals, matches and settings are deleted. Reports involving you may be kept for safety review.")
-        }
         .onAppear { verifiedOnly = state.account.verifiedOnlyDiscovery }
     }
-
-    @State private var legal: TermsView.LegalDoc?
 
     private var profileCard: some View {
         HStack(spacing: Theme.Space.l) {
@@ -124,24 +77,20 @@ struct MeView: View {
     }
 }
 
-enum PulseDefaults {
-    static let durationKey = "crushly.defaultDuration"
-}
-
 struct SafetyTipsView: View {
     var body: some View {
         List {
             Section("Meeting someone") {
-                tip("person.3.fill", "Meet in public", "Pick a busy, well-lit spot on campus — the preset meeting points are all public.")
+                tip("person.3.fill", "Meet in public", "If you decide to meet, pick a busy, well-lit spot on campus.")
                 tip("message.fill", "Tell a friend", "Share where you're going and who you're meeting.")
-                tip("figure.walk.departure", "Leave whenever you want", "You never owe anyone a meetup. Cancel Find Mode anytime.")
+                tip("figure.walk.departure", "Leave whenever you want", "You never owe anyone a meetup. You can leave a conversation at any time.")
                 tip("car.fill", "Get yourself there and back", "Use your own transport, or a route you know.")
             }
             Section("In the app") {
-                tip("shield.lefthalf.filled", "Protect My Heart", "Disappear instantly, end your session and stop all signals. No one is told.")
-                tip("hand.raised.fill", "Block", "They can't see, signal or interact with you, and aren't notified.")
+                tip("pause.circle", "Pause campus matching", "Become invisible instantly and end any matching session. No one is told.")
+                tip("hand.raised.fill", "Block", "Ends any conversation. They can't match or message you, and aren't notified.")
                 tip("exclamationmark.bubble.fill", "Report", "Reports are private and reviewed by the Crushly team. Reporting also blocks.")
-                tip("location.slash.fill", "No live location", "Crushly never shares your coordinates, direction or movements.")
+                tip("location.slash.fill", "Your location stays on your phone", "Crushly never shares your coordinates, distance, direction or movements. People matching in the same space can infer you were there too.")
             }
             Section {
                 Label("In an emergency, call 911.", systemImage: "phone.fill")
@@ -168,25 +117,25 @@ struct SafetyTipsView: View {
     }
 }
 
-struct ShieldSheet: View {
+struct PauseSheet: View {
     @Environment(AppState.self) private var state
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: Theme.Space.l) {
-                Text("You'll disappear from Around right away, your session ends, active meetups are cancelled, and no new signals come in or go out. Nobody is notified.")
+                Text("You'll become invisible right away and any matching session ends. Nobody is notified. Resuming never makes you visible on its own: you'll be asked again in a space.")
                     .font(Theme.Typeface.callout).foregroundStyle(Theme.Palette.inkSoft)
-                ForEach(Array(state.rules.shieldDurationsMinutes.enumerated()), id: \.offset) { _, minutes in
+                ForEach(Array((state.rules.pauseDurationsMinutes.map(Optional.some) + [nil]).enumerated()), id: \.offset) { _, minutes in
                     AsyncButton {
-                        if await state.perform({ try await state.enterShield(minutes: minutes) }) { dismiss() }
+                        if await state.perform({ try await state.pauseCampusMatching(minutes: minutes) }) { dismiss() }
                     } label: { Text(label(minutes)) }
                         .buttonStyle(.crush(.ink))
                 }
                 Spacer()
             }
             .padding(Theme.Space.gutter)
-            .navigationTitle("Protect My Heart")
+            .navigationTitle("Pause campus matching")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
@@ -194,7 +143,7 @@ struct ShieldSheet: View {
     }
 
     private func label(_ minutes: Int?) -> String {
-        guard let minutes else { return "Until I turn it off" }
+        guard let minutes else { return "Until I turn it back on" }
         return minutes < 60 ? "\(minutes) minutes" : (minutes == 60 ? "1 hour" : "\(minutes / 60) hours")
     }
 }
@@ -250,16 +199,10 @@ struct NotificationSettingsView: View {
                 }
             }
             Section {
-                toggle("Anonymous Heart Signals", \.anonymousSignals)
-                toggle("Heart Sync", \.heartSync)
-                toggle("Crossed Hearts", \.crossedHearts)
-                toggle("Meeting requests", \.findRequests)
-                toggle("Connect Later reminders", \.connectionReminders)
-                toggle("Connection expiring", \.connectionExpiry)
-                toggle("Pulse session ending", \.pulseExpiry)
-                toggle("Campus events", \.campusEvents)
+                toggle("New matches", \.newMatches)
+                toggle("Messages", \.messages)
             } footer: {
-                Text("Lock-screen alerts never include names, photos or places. Your choices are enforced on the server, so they apply on every device.")
+                Text("Lock-screen alerts only say \"You have a new match.\" or \"You have a new message.\" No names, photos, places or message text. Your choices are enforced on the server, so they apply on every device.")
             }
         }
         .foregroundStyle(Theme.Palette.ink, Theme.Palette.inkSoft)   // section headers/footers readable on paper
@@ -279,15 +222,33 @@ struct NotificationSettingsView: View {
     }
 }
 
-/// Demo-only controls. Never compiled into behaviour for live mode (hidden when `state.demo` is nil).
+/// Demo-only controls. Hidden when `state.demo` is nil, so they never exist in live mode.
 struct DemoControlsSection: View {
     @Environment(AppState.self) private var state
 
     var body: some View {
         Section {
-            Button("Skip ahead 5 minutes") { Task { await state.demoSkipAhead(minutes: 5) } }
-            Button("Skip ahead 30 minutes") { Task { await state.demoSkipAhead(minutes: 30) } }
-            Button("Skip ahead 25 hours") { Task { await state.demoSkipAhead(minutes: 25 * 60) } }
+            if let sim = state.simulatedLocation {
+                Picker("Simulated location", selection: Binding(
+                    get: { sim.place },
+                    set: { state.demoMove(to: $0) })) {
+                    Text("Outside supported spaces").tag(SimulatedLocationProvider.Place.outside)
+                    ForEach(state.zones) { zone in
+                        Text(zone.name).tag(SimulatedLocationProvider.Place.zone(zone.slug))
+                    }
+                }
+                .accessibilityIdentifier("demo.location")
+                Picker("Simulated permission", selection: Binding(
+                    get: { sim.authorization },
+                    set: { state.demoSetLocationAuthorization($0) })) {
+                    Text("Precise").tag(LocationAuthorization.precise)
+                    Text("Approximate").tag(LocationAuthorization.approximate)
+                    Text("Denied").tag(LocationAuthorization.denied)
+                    Text("Not asked yet").tag(LocationAuthorization.notDetermined)
+                }
+            }
+            Button("Skip ahead 2 minutes (lets the lease lapse)") { Task { await state.demoSkipAhead(minutes: 2) } }
+            Button("Skip ahead 1 hour") { Task { await state.demoSkipAhead(minutes: 60) } }
             Button("Simulate photo approval") { Task { await state.demoSimulateReview(.approved) } }
             Button("Simulate photo rejection") { Task { await state.demoSimulateReview(.rejected) } }
             DisclosureGroup("Scenario cast") {
@@ -301,7 +262,7 @@ struct DemoControlsSection: View {
         } header: {
             HStack { Text("Demo controls"); DemoBadge() }
         } footer: {
-            Text("Fictional people, simulated moderation and a simulated clock. Nothing here is saved or sent anywhere.")
+            Text("Dev fixture: fictional people, a simulated location and a simulated clock. Draft spaces are allowed here only. Nothing is saved or sent anywhere.")
         }
     }
 }

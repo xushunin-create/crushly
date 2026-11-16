@@ -1,7 +1,9 @@
 import SwiftUI
 
+/// A profile opened from Spaces (with the interest button) or from a conversation (`showsInterest: false`).
 struct PersonProfileView: View {
     let person: PublicProfile
+    var showsInterest = true
 
     @Environment(AppState.self) private var state
     @Environment(\.dismiss) private var dismiss
@@ -12,8 +14,10 @@ struct PersonProfileView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: Theme.Space.xl) {
-                    HeartSignalButton(person: person, justSent: $justSent)
-                        .padding(.top, Theme.Space.s)
+                    if showsInterest {
+                        InterestButton(person: person, justSent: $justSent)
+                            .padding(.top, Theme.Space.s)
+                    }
                     identity
                     details
                 }
@@ -46,15 +50,8 @@ struct PersonProfileView: View {
             }
             Text([person.pronouns, person.gender].filter { !$0.isEmpty }.joined(separator: " · "))
                 .font(Theme.Typeface.callout).foregroundStyle(Theme.Palette.inkSoft)
-            HStack(spacing: Theme.Space.s) {
-                StatusPill(text: person.availability.title, systemImage: person.availability.symbol,
-                           tint: Theme.Palette.ink, fill: Theme.Palette.surface)
-                if let band = person.simulatedDistanceBand {
-                    StatusPill(text: "\(band) · simulated", systemImage: "testtube.2", tint: Theme.Palette.plum, fill: Theme.Palette.plumSoft)
-                } else if let space = person.spaceName {
-                    StatusPill(text: space, systemImage: "mappin.circle", tint: Theme.Palette.ink, fill: Theme.Palette.surface)
-                }
-            }
+            StatusPill(text: person.availability.title, systemImage: person.availability.symbol,
+                       tint: Theme.Palette.ink, fill: Theme.Palette.surface)
         }
         .multilineTextAlignment(.center)
     }
@@ -63,7 +60,7 @@ struct PersonProfileView: View {
         VStack(alignment: .leading, spacing: Theme.Space.l) {
             if !person.promptAnswer.isEmpty {
                 VStack(alignment: .leading, spacing: Theme.Space.s) {
-                    Text(person.promptQuestion).font(Theme.Typeface.subheadline.weight(.bold)).foregroundStyle(Theme.Palette.crush)
+                    Text(person.promptQuestion).font(Theme.Typeface.subheadline.weight(.bold)).foregroundStyle(Theme.Palette.crushText)
                     Text(person.promptAnswer).font(Theme.Typeface.title2)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -99,25 +96,24 @@ private struct UndimmedButtonStyle: ButtonStyle {
     }
 }
 
-/// The central Send Heart Signal control: heartbeat, expanding signal rings, sound + haptics on success.
-struct HeartSignalButton: View {
+/// Private interest: heartbeat, a small pop, sound + haptics on success. No radar, ripple or scanning imagery.
+struct InterestButton: View {
     let person: PublicProfile
     @Binding var justSent: Bool
 
     @Environment(AppState.self) private var state
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var beating = false
-    @State private var ringsOut = false
+    @State private var popped = false
     @State private var sending = false
 
-    private enum Availability { case canSend, sent, matched, limit, notLive, shielded }
+    private enum Availability { case canSend, sent, matched, limit, notParticipating }
 
     private var availability: Availability {
-        if state.match(with: person.id) != nil { return .matched }
-        if justSent || state.hasPendingSignal(to: person.id) { return .sent }
-        if state.isShielded { return .shielded }
-        if state.pulseState != .live { return .notLive }
-        if state.signalsRemaining == 0 { return .limit }
+        if state.conversations.contains(where: { $0.other.id == person.id }) { return .matched }
+        if justSent || state.sentInterests.contains(person.id) { return .sent }
+        if !state.isParticipating { return .notParticipating }
+        if state.interestsRemaining == 0 { return .limit }
         return .canSend
     }
 
@@ -126,9 +122,9 @@ struct HeartSignalButton: View {
             Button(action: send) { heart }
                 .buttonStyle(UndimmedButtonStyle())
                 .disabled(availability != .canSend || sending)
-                .accessibilityLabel(accessibilityLabel)
-                .accessibilityHint(availability == .canSend ? "Sends an anonymous Heart Signal" : "")
-                .accessibilityIdentifier("signal.send")
+                .accessibilityLabel(buttonTitle.capitalized)
+                .accessibilityHint(availability == .canSend ? "Privately lets them know, only if it's mutual" : "")
+                .accessibilityIdentifier("interest.send")
 
             Text(caption)
                 .font(Theme.Typeface.callout)
@@ -136,7 +132,7 @@ struct HeartSignalButton: View {
                 .multilineTextAlignment(.center)
                 .frame(minHeight: 44)
                 .animation(Theme.Motion.soft, value: caption)
-                .accessibilityIdentifier("signal.caption")
+                .accessibilityIdentifier("interest.caption")
         }
         .onAppear { beating = true }
     }
@@ -145,13 +141,6 @@ struct HeartSignalButton: View {
         let sent = availability == .sent || availability == .matched
         let active = availability == .canSend || sent
         return ZStack {
-            ForEach(0..<3, id: \.self) { index in
-                Circle()
-                    .stroke(Theme.Palette.crush.opacity(0.3 - Double(index) * 0.08), lineWidth: 2)
-                    .frame(width: CGFloat(190 + index * 44), height: CGFloat(190 + index * 44))
-                    .scaleEffect(ringsOut ? 1.25 : 0.7)
-                    .opacity(ringsOut ? 0 : (sent || reduceMotion ? 0 : 0.6))
-            }
             Circle()
                 .fill(Theme.Palette.crush.opacity(sent ? 0.18 : 0.1))
                 .frame(width: 210, height: 210)
@@ -179,48 +168,44 @@ struct HeartSignalButton: View {
             }
             .foregroundStyle(.white)
         }
-        .frame(width: 300, height: 300)
-        .scaleEffect(reduceMotion ? 1 : (beating ? 1.035 : 0.965))
+        .frame(width: 240, height: 240)
+        .scaleEffect(reduceMotion ? 1 : (beating ? 1.035 : 0.965) * (popped ? 1.08 : 1))
         .animation(reduceMotion ? nil : Theme.Motion.heartbeat, value: beating)
-        .animation(.easeOut(duration: 1.15), value: ringsOut)
+        .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.5), value: popped)
     }
 
     private var buttonTitle: String {
         switch availability {
-        case .canSend: "SEND HEART SIGNAL"
-        case .sent: "SIGNAL SENT"
+        case .canSend: "I'M INTERESTED"
+        case .sent: "INTEREST SENT"
         case .matched: "IT'S MUTUAL"
-        case .limit: "NO SIGNALS LEFT"
-        case .notLive: "ENTER THE RADIUS FIRST"
-        case .shielded: "PROTECTED"
+        case .limit: "NO INTERESTS LEFT"
+        case .notParticipating: "NOT OPEN TO MATCHING"
         }
     }
 
     private var caption: String {
         switch availability {
-        case .canSend: "Anonymous unless they feel it too. \(state.signalsRemaining) left this session."
-        case .sent: "Sent privately. If they signal you too, you'll both know."
-        case .matched: "You noticed each other. Find them in Signals."
-        case .limit: "You've used all \(state.rules.signalsPerSession) signals this session."
-        case .notLive: "Start a Pulse session to send signals."
-        case .shielded: "Leave Protect My Heart to send signals."
+        case .canSend: "Private unless they're interested too.\(state.interestsRemaining.map { " \($0) left this visit." } ?? "")"
+        case .sent: "Sent privately. If they're interested too, you'll both know."
+        case .matched: "You're matched. Say hi in Connections."
+        case .limit: "You've used all \(state.rules.interestsPerSession) interests for this visit."
+        case .notParticipating: "Choose \"Open to matching\" in this space to show interest."
         }
     }
-
-    private var accessibilityLabel: String { buttonTitle.capitalized }
 
     private func send() {
         guard availability == .canSend, !sending else { return }
         sending = true
         Task {
             do {
-                let result = try await state.sendHeartSignal(to: person)
+                let result = try await state.expressInterest(in: person)
                 sending = false
                 justSent = true
                 if case .sent = result {
-                    ringsOut = false
-                    try? await Task.sleep(for: .milliseconds(40))
-                    ringsOut = true
+                    popped = true
+                    try? await Task.sleep(for: .milliseconds(250))
+                    popped = false
                 }
             } catch {
                 sending = false

@@ -64,6 +64,8 @@ nonisolated enum MembershipUnavailableReason: Equatable, Sendable {
     case locationServicesOff
     case matchingPaused
     case signedOut
+    /// The user hasn't turned on campus matching on this device (location is not used at all).
+    case turnedOff
 }
 
 nonisolated enum MembershipState: Equatable, Sendable {

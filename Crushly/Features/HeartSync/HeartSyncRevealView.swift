@@ -2,41 +2,30 @@ import SwiftUI
 
 /// Full-screen mutual match reveal. Covers the tab bar so the moment has focus.
 struct HeartSyncRevealView: View {
-    let match: Match
+    let match: Conversation
 
     @Environment(AppState.self) private var state
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var together = false
     @State private var pulse = false
-    @State private var showFind = false
-    @State private var savedForLater = false
-
-    private var isSync: Bool { match.kind == .heartSync }
 
     var body: some View {
         ZStack {
             RetroBackground()
 
+            ScrollView {
             VStack(spacing: Theme.Space.xl) {
                 Spacer(minLength: Theme.Space.l)
-                Text(isSync ? "Heart Sync" : "Crossed Hearts")
+                Text("Heart Sync")
                     .font(Theme.Typeface.title)
                     .foregroundStyle(Theme.Palette.oxblood)
 
                 portraits
 
                 VStack(spacing: Theme.Space.s) {
-                    if savedForLater {
-                        Text("The timing isn't right yet.").font(Theme.Typeface.title)
-                        Text("Your connection is saved for later.").font(Theme.Typeface.title2).foregroundStyle(Theme.Palette.inkSoft)
-                    } else if isSync {
-                        Text("You noticed\neach other").font(Theme.Typeface.display)
-                        Text("The feeling is mutual.").font(Theme.Typeface.title2).foregroundStyle(Theme.Palette.crush)
-                    } else {
-                        Text("You missed the moment,").font(Theme.Typeface.title)
-                        Text("not each other.").font(Theme.Typeface.title2).foregroundStyle(Theme.Palette.inkSoft)
-                    }
+                    Text("You noticed\neach other").font(Theme.Typeface.display)
+                    Text("The feeling is mutual.").font(Theme.Typeface.title2).foregroundStyle(Theme.Palette.crushText)
                 }
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Theme.Palette.oxblood)
@@ -47,38 +36,26 @@ struct HeartSyncRevealView: View {
                 Spacer(minLength: Theme.Space.l)
 
                 VStack(spacing: Theme.Space.m) {
-                    if savedForLater {
-                        Button("Done") { dismiss() }.buttonStyle(.crush)
-                    } else {
-                        if isSync && state.pulseState == .live {
-                            Button { showFind = true } label: { Label("Find Each Other Now", systemImage: "figure.walk") }
-                                .buttonStyle(.crush)
-                                .accessibilityIdentifier("reveal.find")
-                        }
-                        AsyncButton {
-                            await state.setConnection(match, status: .findLater)
-                            withAnimation(Theme.Motion.soft) { savedForLater = true }
-                        } label: { Text("Connect Later") }
-                            .accessibilityIdentifier("reveal.later")
-                            .buttonStyle(.crush(.secondary))
-                        Button("Stay in the Moment") { dismiss() }
-                            .accessibilityIdentifier("reveal.stay")
-                            .font(Theme.Typeface.button)
-                            .foregroundStyle(Theme.Palette.inkSoft)
-                            .frame(minHeight: Theme.minTap)
+                    Button { state.openConversation(match.id) } label: {
+                        Label("Send a message", systemImage: "bubble.left.and.bubble.right.fill")
                     }
+                    .buttonStyle(.crush)
+                    .accessibilityIdentifier("reveal.message")
+                    Button("Keep exploring") { dismiss() }
+                        .accessibilityIdentifier("reveal.keepExploring")
+                        .font(Theme.Typeface.button)
+                        .foregroundStyle(Theme.Palette.inkSoft)
+                        .frame(minHeight: Theme.minTap)
                 }
             }
             .padding(Theme.Space.gutter)
-        }
-        .sheet(isPresented: $showFind) {
-            FindRequestSheet(match: match) { dismiss() }
-                .presentationDetents([.medium, .large])
+            }
+            .scrollBounceBehavior(.basedOnSize)
         }
         .onAppear {
             withAnimation(reduceMotion ? .none : .spring(response: 0.8, dampingFraction: 0.65).delay(0.15)) { together = true }
             if !reduceMotion { pulse = true }
-            UIAccessibility.post(notification: .announcement, argument: isSync ? "Heart Sync. The feeling is mutual." : "Crossed Hearts.")
+            UIAccessibility.post(notification: .announcement, argument: "Heart Sync. You matched with \(match.other.firstName).")
         }
     }
 
@@ -111,7 +88,7 @@ struct HeartSyncRevealView: View {
                 .scaleEffect(together ? 1 : 0.2)
                 .opacity(together ? 1 : 0)
         }
-        .frame(height: 300)
+        .frame(height: 260)
         .accessibilityElement()
         .accessibilityLabel("You and \(match.other.firstName)")
     }

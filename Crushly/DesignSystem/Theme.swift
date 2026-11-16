@@ -13,6 +13,10 @@ enum Theme {
         static let inkFaint = Color(red: 0.53, green: 0.40, blue: 0.37)
         static let crush = Color(red: 0.969, green: 0.435, blue: 0.380)       // #F76F61
         static let crushSoft = Color(red: 1.0, green: 0.714, blue: 0.780)     // #FFB6C7
+        /// Coral dark enough for text and links on paper/surface (≥ 4.5:1). Use `crush` for icons and fills.
+        static let crushText = Color(red: 0.70, green: 0.16, blue: 0.13)      // #B3291F
+        /// Amber dark enough for text (≥ 4.5:1 on amberSoft/surface).
+        static let amberText = Color(red: 0.52, green: 0.27, blue: 0.0)
         static let orange = Color(red: 1.0, green: 0.478, blue: 0.0)         // #FF7A00
         static let oxblood = Color(red: 0.478, green: 0.122, blue: 0.122)    // #7A1F1F
         static let blush = Color(red: 1.0, green: 0.714, blue: 0.780)        // #FFB6C7
@@ -37,7 +41,8 @@ enum Theme {
     // MARK: Type (all styles scale with Dynamic Type)
 
     enum Typeface {
-        static let display = Font.system(size: 42, weight: .black, design: .serif)
+        /// Scales with Dynamic Type (large title, serif black).
+        static let display = Font.system(.largeTitle, design: .serif).weight(.black)
         static let title = Font.system(.title, design: .serif).weight(.black)
         static let title2 = Font.system(.title2, design: .serif).weight(.bold)
         static let headline = Font.system(.headline, design: .rounded).weight(.bold)
@@ -85,12 +90,17 @@ extension View {
     func crushCard(padding: CGFloat = Theme.Space.l, fill: Color = Theme.Palette.surface) -> some View {
         self
             .padding(padding)
-            .background(fill, in: RoundedRectangle(cornerRadius: Theme.Radius.m, style: .continuous))
+            // The shadow belongs to the card shape only; applied to the whole view it would blur behind every
+            // glyph and lower text contrast.
+            .background {
+                RoundedRectangle(cornerRadius: Theme.Radius.m, style: .continuous)
+                    .fill(fill)
+                    .shadow(color: Theme.Palette.oxblood.opacity(0.08), radius: 12, y: 6)
+            }
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.Radius.m, style: .continuous)
                     .stroke(Theme.Palette.hairline, lineWidth: 1)
             )
-            .shadow(color: Theme.Palette.oxblood.opacity(0.08), radius: 12, y: 6)
     }
 
     /// Dark "ink" card used for status and primary moments.

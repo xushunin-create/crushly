@@ -16,7 +16,7 @@ struct TermsView: View {
                 SectionHeader(eyebrow: "Before you start", title: "A few promises")
 
                 VStack(alignment: .leading, spacing: Theme.Space.m) {
-                    promise("eye.slash.fill", "Interest stays anonymous", "No one sees who signalled them unless it's mutual.")
+                    promise("eye.slash.fill", "Interest stays private", "No one learns you were interested unless it's mutual.")
                     promise("location.slash.fill", "No exact location", "We show Campus Spaces, never your coordinates or direction.")
                     promise("shield.lefthalf.filled", "You're in control", "Pause, hide, block or report anytime.")
                 }
@@ -102,7 +102,7 @@ struct LegalDocumentView: View {
                         Label("Development placeholder — not the real \(title). Final legal text is a release dependency.",
                               systemImage: "exclamationmark.triangle.fill")
                             .font(Theme.Typeface.callout.weight(.semibold))
-                            .foregroundStyle(Theme.Palette.amber)
+                            .foregroundStyle(Theme.Palette.amberText)
                             .crushCard(fill: Theme.Palette.amberSoft)
                     }
                     Text("Version \(LegalDocuments.termsVersion)").font(Theme.Typeface.footnote).foregroundStyle(Theme.Palette.inkSoft)

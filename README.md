@@ -1,133 +1,106 @@
 # Crushly
 
-An iOS app for USC students to see who's around in a Campus Space, send anonymous Heart Signals, and connect only when the interest is mutual.
+An iOS app for USC students. When you're in a supported campus space, you can choose — for that visit only — to be
+open to matching with other people there who made the same choice. Interest stays private unless it's mutual; mutual
+interest becomes a one-to-one chat.
 
-SwiftUI · iOS 26 · Supabase (Postgres + RLS + Edge Functions) · Swift Testing / XCTest
+Your location is evaluated on your iPhone. The server only learns which space you chose, on a 60-second lease.
+Nobody else ever sees your location, distance, arrival, online status or how many people are around. Crushly is not
+anonymous, not end-to-end encrypted, and not affiliated with or endorsed by USC.
+
+SwiftUI · iOS 26 · Core Location (When In Use) · Supabase (Postgres + RLS + Realtime + Edge Functions) ·
+Swift Testing / XCTest
+
+Design: [docs/CAMPUS_SPACES_DESIGN.md](docs/CAMPUS_SPACES_DESIGN.md) · Server contract:
+[docs/BACKEND_CONTRACT.md](docs/BACKEND_CONTRACT.md) · Launch blockers: [docs/PRE_LAUNCH_CHECKLIST.md](docs/PRE_LAUNCH_CHECKLIST.md)
 
 ---
 
 ## Quick start (demo mode, no setup)
 
-1. Open `Crushly.xcodeproj` in Xcode 27 and run the **Crushly** scheme on an iPhone simulator.
-2. With no `Secrets.plist`, the app runs in **demo mode**: a fictional campus, scripted people, a simulated clock and a permanent **DEMO** badge. Nothing is saved or sent anywhere.
+1. Open `Crushly.xcodeproj` in Xcode and run the **Crushly** scheme on an iPhone simulator.
+2. With no `Secrets.plist`, the app runs the **demo fixture**: fictional people, a simulated location, a simulated
+   clock and a permanent **DEMO** badge. It is in-memory only and can never reach the server.
 3. Sign in with any `@usc.edu` address and the code **123456**.
 
-Launch arguments (Product → Scheme → Edit Scheme → Arguments; already listed there, disabled):
-
-| Argument | Effect |
+| Launch argument | Effect |
 |---|---|
 | `-CrushlyDemo` | Force demo mode even if `Secrets.plist` exists |
-| `-CrushlyDemoSeeded` | Start signed in with a finished profile ("Tommy") |
-| `-CrushlyRoute signals` | Demo only: simulate tapping a notification (`signals`, `around`, `match:<id>`) |
+| `-CrushlyDemoSeeded` | Start signed in with a finished profile and preferences ("Tommy") |
+| `-CrushlyDemoLocation <slug\|outside>` | Demo only: start the simulated location in a zone (`upc-mccarthy-quad`, `usc-village-great-lawn`, `upc-alumni-park-tommy-trojan`) |
+| `-CrushlyDemoLocationAuth <precise\|approximate\|denied\|notDetermined>` | Demo only: simulated permission |
+| `-CrushlyRoute <connections\|match:<id>>` | Demo only: simulate tapping a notification |
 
-## Demo walkthrough (about 5 minutes, repeatable)
+### Demo walkthrough (about 5 minutes)
 
-Run with `-CrushlyDemo -CrushlyDemoSeeded`. **Me → Demo controls** has *Skip ahead*, *Simulate photo approval / rejection*, and a list of who does what.
+Run with `-CrushlyDemo -CrushlyDemoSeeded -CrushlyDemoLocation upc-mccarthy-quad`. **Me → Demo controls** moves the
+simulated location, changes the simulated permission, skips time, simulates photo review and lists what each person does.
 
-1. **Around:** tap **Enter the Radius** → USC Village → 30 min. Seven people appear on the radar. The radar positions are labeled decorative; switch to **List**, where distances are labeled *simulated*.
-   - Taylor (paused), Jordan (protected), Sam (verified-only) and Rio (another space) are correctly hidden.
-2. **Anonymous receipt:** the **Signals** tab shows *"Someone nearby noticed you."* with a coarse time and no name.
-3. **One-sided signal:** open **Noah** → **Send Heart Signal**. Heartbeat, rings and *"Sent privately."* Noah never signals back, so it stays anonymous. The card now reads *4 of 5 signals left*.
-4. **Heart Sync:** open **Mina** → send. The profile closes and the full-screen reveal plays: *"You noticed each other. The feeling is mutual."*
-5. **Find Each Other:** tap **Find Each Other Now** → Tommy Trojan. Mina accepts after a few seconds and Find Mode turns on (Signals → Mina). Tap **We found each other**.
-6. **Delayed match:** signal **Alex** and close his profile. About 20 seconds later the reveal appears on its own, and Alex then asks to meet. Accept or decline it in Signals → Alex.
-7. **Crossed Hearts:** Me → **Skip ahead 5 minutes** (Jamie leaves). In Around, under *Recently in your radius*, signal **Jamie**. The reveal reads *"You missed the moment, not each other."* Jamie then suggests coffee.
-8. **Connect Later:** on any match, choose **Connect Later**, then *Swap Instagram*. The handle appears only after the other person accepts.
-9. **Safety:** use **Protect My Heart** from the Pulse card. You vanish and leaving doesn't make you visible again. Block or report from any profile's ••• menu.
-10. **Expiry:** Me → **Skip ahead 25 hours**. Unconfirmed connections move to *Expired*, and the Pulse card shows *"Time's up — you're hidden"*.
+1. **Spaces → Turn on campus matching.** After two stable fixes (~8 s) the sheet asks *"Open to matching here?"*.
+   Try **Stay invisible** first: the status card says so, and you won't be asked again this visit.
+2. **Open to matching here.** Seven people appear in random order. Taylor (paused), Jordan (his preferences exclude
+   you), Sam (verified-only) and Rio (another space) never appear.
+3. **"Someone here is interested"** appears with no name, time or count detail (that's Mina).
+4. **Private interest:** open **Noah** → **I'm interested**. He never reciprocates; nothing is revealed.
+5. **Heart Sync:** open **Mina** → **I'm interested** → the reveal → **Send a message**. She replies.
+6. **Delayed match:** show interest in **Alex**; about 20 s later the reveal appears on its own.
+7. **Leaving deletes interests:** Jamie shows interest, then leaves after 3 minutes; their interest is gone with them.
+8. **Leave the space** (Demo controls → *Outside*): you're revoked immediately. **Skip ahead 2 minutes** while inside:
+   the lease lapses and you're asked again.
+9. **Quiet space:** move to *Great Lawn at USC Village*: "It's quiet here", with no count.
+10. **Safety:** in a chat, ••• → *Report or block* (choose messages as evidence) or *Leave & delete conversation*.
+    Me → *Privacy & safety* → *Pause campus matching*.
 
 ## Live mode (Supabase)
 
-1. Copy `Config/Secrets.example.plist` to `Crushly/Resources/Secrets.plist` (git-ignored) and fill in the **Project URL** and **publishable / anon key**. Never put the service-role or secret key in the app.
-2. In the Supabase SQL Editor, run in order:
-   - `supabase/migrations/20261110000000_init.sql`
-   - `supabase/migrations/20261111000000_notifications.sql`
-   - `supabase/seed.sql`
-3. **Authentication → Email Templates → Magic Link:** include `{{ .Token }}`, because the app expects a 6-digit code.
-4. **Email delivery:** Supabase's built-in mailer only sends to organization members and is rate-limited. For real users, configure custom SMTP (needs a domain). For testing, invite your own USC address to the Supabase org.
-5. **Edge Functions:** deploy `delete-account` (Verify JWT on) and, once APNs is ready, `push-dispatch` (Verify JWT off). See [docs/NOTIFICATIONS.md](docs/NOTIFICATIONS.md).
-6. Optional: enable `pg_cron` before running the migration so expiry cleanup and reminders run every minute.
+1. Copy `Config/Secrets.example.plist` to `Crushly/Resources/Secrets.plist` (git-ignored) with the **Project URL** and
+   **anon / publishable key**. Never put the service-role key in the app.
+2. Apply the migrations in order in the SQL Editor: `20261110000000_init`, `20261111000000_notifications`,
+   `20261116000000_campus_spaces`, `20261117000000_draft_usc_spaces`, `20261118000000_realtime_pokes`, then `seed.sql`.
+3. For development only, enable draft zones: `update app_settings set value = 'true' where key = 'allow_draft_spaces';`
+   (production must keep `false`).
+4. Realtime → Settings: turn off **Allow public access**. Auth: OTP email template with `{{ .Token }}`; custom SMTP for
+   real users.
+5. Deploy `delete-account` (Verify JWT on) and `push-dispatch` (Verify JWT off) — see [docs/NOTIFICATIONS.md](docs/NOTIFICATIONS.md).
+6. On a simulator, test locations with the GPX routes in `Config/Locations/` (Scheme → Run → Options → Default
+   Location) or `xcrun simctl location booted start …`.
 
 ## Tests
 
 ```bash
-# App: unit + UI tests (demo backend), ~15 min
-xcodebuild test -project Crushly.xcodeproj -scheme Crushly \
-  -destination 'platform=iOS Simulator,name=iPhone 18 Pro'
+# App: unit tests (~2 min) and UI tests incl. accessibility audits (~10 min), demo fixture only
+xcodebuild test -project Crushly.xcodeproj -scheme Crushly -destination 'platform=iOS Simulator,name=iPhone 18 Pro' -only-testing:CrushlyTests
+xcodebuild test -project Crushly.xcodeproj -scheme Crushly -destination 'platform=iOS Simulator,name=iPhone 18 Pro' -only-testing:CrushlyUITests
 
-# Database: schema, RLS, RPCs, anonymity, concurrency (needs Docker), ~2 min
-supabase/tests/run.sh
+# Database: schema, RLS, RPCs, privacy rules, realtime authorization, concurrency (needs Docker, ~2 min)
+bash supabase/tests/run.sh
 ```
 
 | Suite | What it covers |
 |---|---|
-| `CrushlyTests` (Swift Testing) | Onboarding gates, profile validation, the demo rules mirror of the server (limits, duplicates, anonymity, one match per pair, Heart Sync vs Crossed Hearts, blocks, Shield, expiry), connection lifecycle, Find Each Other, notification routing |
-| `CrushlyUITests` (XCTest) | End-to-end journeys for every phase, plus Apple's accessibility audit at default and the largest text size |
-| `supabase/tests` (SQL) | 246 assertions across 11 suites, including the recipient being unable to read signal rows, reciprocal sends from two connections producing exactly one match, and send-time notification suppression |
+| `CrushlyTests` | Membership engine + GPX replays; participation flow through AppState (consent, open/renew/revoke, lease loss, reconciliation, pause, sign-out); demo-rule mirror of the SQL (evidence, epochs, quiet spaces, two-way preferences, exposure-gated interest, cascades, blocks); chat (paging, retry-safe sends, leave & delete, report evidence, cache protection and purging, pokes); privacy guards (no logging in location/chat/backend code, no coordinates in evidence, photos stripped of GPS); onboarding; notification routing |
+| `CrushlyUITests` | Onboarding with preferences; consent / stay invisible / open / interest / Heart Sync / chat; go invisible; quiet space; outside; permission states; explainer; leave & delete; block from chat; notification route; pause; Apple's accessibility audit at default and AX5 |
+| `supabase/tests` | Every privacy rule in design §5–7, plus `80_realtime.sql`: own private channel only, receive-only, content-free pokes, and no message content reaching a still-connected subscriber after block, leave or account deletion |
 
 ## Project layout
 
 ```
 Crushly/
-  App/            Entry point, AppConfig (demo/live), AppState (single source of truth), RootView + tab bar
-  DesignSystem/   Theme tokens, components, avatar
-  Models/         Domain types, rules/defaults, errors
-  Services/       Contracts.swift (protocols) · Demo/ (in-memory server + fictional cast) · Live/ (Supabase) ·
-                  Feedback/ (sound + haptics) · Notifications/ (permission, APNs registration, deep links)
-  Features/       Onboarding · Around · Signals · HeartSync · Connections · Safety · Me · Profile
-CrushlyTests/ CrushlyUITests/
-supabase/         migrations · seed · functions (delete-account, push-dispatch) · tests
-docs/             IMPLEMENTATION_PLAN · BACKEND_CONTRACT · MODERATION · NOTIFICATIONS
+  App/            CrushlyApp (privacy cover), AppConfig, AppState, RootView + tabs (Spaces / Connections / Me)
+  DesignSystem/   Theme, components, shared cards, avatar
+  Location/       Geometry, SpaceZone, MembershipEngine, LocationService
+  Models/         Domain types, rules, errors
+  Services/       Contracts · Live (Supabase) · Demo (fixture + simulated location) · Chat (message cache) ·
+                  Notifications · Feedback
+  Features/       Onboarding · Spaces · Connections · HeartSync · Safety · Privacy · Profile · Me
+  Resources/      campus_spaces.json (bundled draft zones, © OpenStreetMap contributors)
+supabase/         migrations · seed · functions · tests
+docs/             CAMPUS_SPACES_DESIGN · BACKEND_CONTRACT · PRE_LAUNCH_CHECKLIST · IMPLEMENTATION_PLAN · NOTIFICATIONS · MODERATION
 ```
 
 ## Status
 
-### Implemented and verified (demo backend + SQL tests)
-
-| Area | Covered |
-|---|---|
-| Registration | USC-only passwordless email code, 18+ declaration, Terms and Privacy acceptance, sign out, session restore, account deletion |
-| Profiles | Photos (≤6, re-encoded with location metadata stripped), first name, age, pronouns, gender, exactly 3 interests, vibe tags, prompt, intention, availability, private Instagram |
-| Photo review | Pending / approved / rejected states. A badge only appears when approved. Changing photos sends them back to review. |
-| Pulse Mode | 30 / 60 min or until the event ends; pause (hidden, clock keeps running) and resume; expiry; server timestamps are authoritative |
-| Campus Spaces | Manual places, events with end times, event codes |
-| Around | Abstract radar with a stable per-session layout, list view, recent encounters, honest empty and expired states |
-| Heart Signals | 5 per session, no repeats, no self-signals, eligibility enforced on the server, anonymous receipts (2–10 min delay, 15-min time buckets, space name shown only when ≥5 people were there) |
-| Heart Sync / Crossed Hearts | Atomic match creation with concurrency tested, full-screen reveal, bell sound plus two haptic pulses, both classifications |
-| Connections | Connect Later; coffee, study break, starter and Instagram requests with accept/decline; 24 h confirmation and 7 days of inactivity before expiry; remove |
-| Find Each Other | Request → accept, public meeting points, timeout, cancel, complete. Ends if either person turns off Pulse, enters Shield or blocks. No location shared. |
-| Safety | Protect My Heart (timed or indefinite, never auto-resumes), block and unblock, reports in 7 categories (reporting also blocks), safety tips |
-| Notifications | Server queue with dedupe and send-time relevance checks, discreet copy, permission asked after the first signal, deep links, local Pulse reminder |
-| Accessibility | Dynamic Type up to AX5 with no clipping, VoiceOver labels and hints, Reduce Motion, 44 pt targets, and the automated audit passing on the main screens |
-
-### Simulated (demo mode only, clearly labeled)
-
-- The fictional people and their behavior, the clock (*Skip ahead*), photo moderation decisions, and distance bands (labeled "(simulated)").
-- Demo data resets when the app relaunches.
-
-### Not verified or blocked
-
-| Item | Blocked on |
-|---|---|
-| Any live-mode journey (sign-in, profile save, upload, Pulse, signals against Supabase) | Email delivery (custom SMTP, or org-member testing) |
-| `delete-account` and `push-dispatch` edge functions: written, never run or type-checked | Deploying from the Supabase dashboard |
-| Real push notifications | APNs key, the Push Notifications capability in Xcode, `push-dispatch` deployment and the cron schedule |
-| Storage policies, `pg_cron` and the `auth.users` trigger on real Supabase | Only exercised on plain Postgres with stand-ins so far |
-| Haptics and sound feel | Needs a physical iPhone (the simulator has no haptics) |
-| Selfie / identity verification | A vendor (UI says "not available yet"; no badge) |
-| Distance-based discovery | A real approximate-location design (deliberately not built) |
-| Campus events notifications | An event data source |
-| Terms of Service and Privacy Policy | Legal text (development placeholders, clearly marked) |
-| Moderation | A named owner and review process ([docs/MODERATION.md](docs/MODERATION.md)) |
-
-## Remaining launch work (revised estimate)
-
-| Work | Estimate |
-|---|---|
-| Live integration pass: SMTP, two real accounts, fix whatever real Supabase surfaces (RLS, storage, PostgREST encoding) | 2–3 days |
-| APNs end to end on devices, TestFlight build | 1–2 days |
-| Realtime subscriptions to replace 8-second polling (optional) | 1 day |
-| Admin / moderation tooling beyond SQL | 2–4 days |
-| Legal text, App Store privacy labels, review notes (dating app, 18+) | external, plus about 1 day |
-
-About **6–10 developer days** to a TestFlight beta with real users, plus external dependencies. App Store review for a dating app adds its own lead time.
+Implemented and verified against the demo fixture, the SQL suite (plain Postgres with Supabase stand-ins) and the iOS
+simulator. **Not yet verified:** any journey against the live Supabase project, real Realtime/APNs delivery, and
+on-campus behaviour (entry/exit latency, accuracy near buildings, background renewal, battery). All three campus zones
+are unvalidated drafts. See [docs/PRE_LAUNCH_CHECKLIST.md](docs/PRE_LAUNCH_CHECKLIST.md).

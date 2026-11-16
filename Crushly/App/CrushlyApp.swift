@@ -10,6 +10,8 @@ struct CrushlyApp: App {
         WindowGroup {
             RootView()
                 .environment(state)
+                // App-switcher privacy cover: hides chats and profiles whenever the scene isn't active.
+                .overlay { if scenePhase != .active { PrivacyCover().transition(.opacity) } }
                 .task { await state.bootstrap() }
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {

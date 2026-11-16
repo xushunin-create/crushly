@@ -7,9 +7,10 @@ import Testing
 @MainActor
 struct OnboardingTests {
     private func makeState(seeded: Bool = false) -> AppState {
-        let demo = DemoBackend(options: .init(seededAccount: seeded, receiptDelay: 0, latency: .zero))
-        return AppState(config: AppConfig(environment: .demo), backend: demo, demo: demo)
+        TestWorld.state(TestWorld.demo(seeded: seeded))
     }
+
+    private let prefs = MatchPreferences(matchGender: .woman, showMe: [.man, .nonbinary], ageMin: 19, ageMax: 26)
 
     private func completeProfile(_ state: AppState) async throws -> Profile {
         let path = try await state.backend.uploadPhoto(Data([0xFF, 0xD8, 0xFF]))
@@ -56,7 +57,10 @@ struct OnboardingTests {
 
         let profile = try await completeProfile(state)
         try await state.saveProfile(profile)
+        #expect(state.phase == .needsProfile, "matching preferences are required too")
+        try await state.saveProfile(profile, preferences: prefs)
         #expect(state.phase == .ready)
+        #expect(state.preferences == prefs)
         #expect(state.profile?.firstName == "Avery")
         #expect(state.profile?.photoReviewStatus == .pending)
 
@@ -80,7 +84,7 @@ struct OnboardingTests {
         var profile = try await completeProfile(state)
         profile.photoPaths = []
         #expect(profile.missingFields == ["At least one photo"])
-        try await state.saveProfile(profile)
+        try await state.saveProfile(profile, preferences: prefs)
         #expect(state.phase == .needsProfile)
 
         profile.interests = ["Music"]
@@ -125,6 +129,20 @@ struct OnboardingTests {
         try await state.verifyCode(email: "tommy@usc.edu", code: DemoWorld.demoCode)
         #expect(state.phase == .needsTerms)
         #expect(state.profile == nil)
+    }
+
+    @Test func invalidPreferencesAreRejected() async throws {
+        let state = makeState(seeded: true)
+        await state.bootstrap()
+        let profile = try #require(state.profile)
+        var bad = prefs
+        bad.showMe = []
+        await #expect(throws: CrushlyError.self) { try await state.saveProfile(profile, preferences: bad) }
+        bad = prefs
+        bad.ageMin = 30; bad.ageMax = 25
+        await #expect(throws: CrushlyError.self) { try await state.saveProfile(profile, preferences: bad) }
+        #expect(!MatchPreferences().isComplete)
+        #expect(prefs.isComplete)
     }
 
     @Test func emailRuleIsCaseInsensitiveAndExact() {

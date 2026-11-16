@@ -12,7 +12,7 @@ import Foundation
 //
 // Coordinates go only to the in-memory MembershipEngine. Nothing here logs, stores or transmits them.
 
-nonisolated enum LocationAuthorization: Equatable, Sendable {
+nonisolated enum LocationAuthorization: Hashable, Sendable {
     case notDetermined
     case denied            // denied, restricted, or Location Services off
     case approximate       // authorized, reduced accuracy

@@ -1,103 +1,148 @@
 import Foundation
 import UIKit
 
-/// In-memory backend for demo mode. Implements the same contracts as the live backend and enforces the
-/// same rules as the SQL functions (docs/BACKEND_CONTRACT.md §3–4). All people are fictional.
-/// Nothing here is persisted or sent anywhere; relaunching resets the world.
+/// DEV FIXTURE — in-memory backend for demo mode (always shown with a DEMO badge). Implements the same contracts as
+/// the live backend and mirrors the SQL rules in supabase/migrations/20261116000000_campus_spaces.sql
+/// (docs/BACKEND_CONTRACT.md §3–4). All people are fictional; nothing is persisted or sent anywhere.
+///
+/// It is never a production check-in bypass: it can't talk to the server, and AppState only pairs it with the
+/// simulated location provider (live mode always uses Core Location). Draft spaces are allowed here because this is
+/// a dev fixture; the production server keeps `allow_draft_spaces = false`.
 final class DemoBackend: CrushlyBackend {
     struct Options: Equatable {
-        /// Start already signed in with a finished profile (skips onboarding).
+        /// Start already signed in with a finished profile and preferences (skips onboarding).
         var seededAccount = false
-        /// Receipt visibility delay. The server uses 2–10 min; demo defaults to a few seconds so it is testable.
+        /// Anonymous receipt delay. The server uses 30–90 s; the demo defaults to a few seconds so it is testable.
         var receiptDelay: TimeInterval = 3
+        /// How long scripted people take to reply to a message.
+        var replyDelay: TimeInterval = 4
         var latency: Duration = .milliseconds(180)
+        /// Mirror the server's fixed-window rate limits.
+        var enforceRateLimits = true
     }
 
     // MARK: State
 
     private(set) var options: Options
-    let rules = AppRules.default
-    private let startedAt: Date
-    /// Demo-only clock offset so expiry can be tested without waiting ("Skip ahead" in Me › Demo).
+    private(set) var rules: AppRules = {
+        var rules = AppRules.default
+        rules.allowDraftSpaces = true   // dev fixture only; see the type comment
+        return rules
+    }()
+    let zones: [SpaceZone]
+    /// Demo-only clock offset so leases and pauses can be tested without waiting ("Skip ahead" in Me › Demo).
     private(set) var clockOffset: TimeInterval = 0
     func now() -> Date { Date().addingTimeInterval(clockOffset) }
 
-    private let myID = UUID(uuidString: "00000000-0000-0000-0000-0000000000AA")!
+    let myID = UUID(uuidString: "00000000-0000-0000-0000-0000000000AA")!
     private var signedInEmail: String?
     private var pendingCodeEmail: String?
     private var profile: Profile?
     private var account = PrivateAccount()
+    private var preferences = MatchPreferences()
     private var prefs = NotificationPrefs()
-    private var session: PulseSession?
-    private var shield: ShieldState?
     private var photoStore: [String: Data] = [:]
 
+    // participation_state + participation_sessions (mine)
+    private var consentEpoch: Int64 = 0
+    private var matchingPaused = false
+    private var pausedUntil: Date?
+    private var mySession: MySession?
+
     private var people: [UUID: DemoWorld.Person] = [:]
-    private var spaces: [CampusSpace]
-    private var signals: [DemoSignal] = []
-    private var matchesByID: [UUID: DemoMatch] = [:]
-    /// (blocker, blocked)
-    private var blocks: Set<Pair> = []
+    /// Each fictional person's current session id (stable while they stay; removed when they leave).
+    private var personSessions: [UUID: UUID] = [:]
+    private var exposures: Set<SessionPair> = []
+    private var interests: [Interest] = []
+    private var matches: [UUID: DemoMatch] = [:]
+    private var messages: [UUID: [DemoMessage]] = [:]
+    private var replyCursor: [UUID: Int] = [:]
+    private var blocks: Set<UserPair> = []
     private var blockedAt: [UUID: Date] = [:]
-    private var encounters: [UUID: Date] = [:]
-    private var reports: [(UUID, ReportCategory, String)] = []
+    private var rateHits: [String: Int] = [:]
     private var scheduled: [(at: Date, run: () -> Void)] = []
+    private var departureScheduled = false
 
-    private struct Pair: Hashable { let a: UUID; let b: UUID }
+    private var pokeContinuation: AsyncStream<RealtimePoke>.Continuation?
 
-    private struct DemoSignal {
-        let id = UUID()
-        let sender: UUID
-        let recipient: UUID
-        let spaceID: UUID?
-        let createdAt: Date
-        let expiresAt: Date
+    /// Fault injection (dev fixture / tests): the next N sends fail before reaching the "server".
+    var simulateOfflineSends = 0
+    /// Fault injection: the next N sends are stored, but the response is "lost" (the client sees a timeout).
+    var simulateLostResponses = 0
+
+    /// What the demo "moderators" received. Exposed for tests and the demo cast sheet.
+    private(set) var submittedReports: [DemoReport] = []
+    /// Ids only, like `deletion_tombstones`.
+    private(set) var deletedMatchIDs: Set<UUID> = []
+
+    private struct MySession {
+        let id: UUID
+        let slug: String
+        let boundaryVersion: Int
+        let consentEpoch: Int64
+        let clientRequestID: UUID
+        var leaseExpiresAt: Date
+        var lastSeq: Int64
+        var lastFixMs: Int64
+        var interestsSent: Int
+    }
+
+    private struct SessionPair: Hashable { let viewer: UUID; let target: UUID }
+    private struct UserPair: Hashable { let blocker: UUID; let blocked: UUID }
+
+    private struct Interest {
+        let sender: UUID      // session id
+        let recipient: UUID   // session id
         let visibleAt: Date
-        let spaceDisclosable: Bool
-        var status: SignalStatus = .pending
-        var matchID: UUID?
     }
 
     private struct DemoMatch {
         let id: UUID
         let other: UUID
-        let kind: MatchKind
-        let spaceID: UUID?
         let createdAt: Date
-        var connection: Connection
-        var actions: [ConnectionAction] = []
-        var find: FindRequest?
+        var myLastReadAt: Date?
     }
 
-    init(options: Options = Options()) {
+    struct DemoMessage: Equatable {
+        let id: UUID
+        let senderID: UUID
+        let body: String
+        let createdAt: Date
+    }
+
+    struct DemoReport: Equatable {
+        let target: UUID
+        let category: ReportCategory
+        let details: String?
+        let evidence: [DemoMessage]
+    }
+
+    init(options: Options = Options(), zones: [SpaceZone] = SpaceZoneCatalog.bundled()) {
         self.options = options
-        let start = Date()
-        startedAt = start
-        spaces = DemoWorld.spaces(now: start)
-        for person in DemoWorld.people() { people[person.profile.id] = person }
-        for person in people.values {
-            if let after = person.script.signalsYouAfter {
-                schedule(at: start.addingTimeInterval(after)) { [weak self] in self?.scriptedSignal(from: person.profile.id) }
-            }
+        self.zones = zones
+        for person in DemoWorld.people() {
+            people[person.profile.id] = person
+            if person.script.space != nil, !person.script.paused { personSessions[person.profile.id] = UUID() }
         }
         if options.seededAccount { seedAccount() }
     }
 
     private func seedAccount() {
         signedInEmail = "tommy@usc.edu"
-        account = PrivateAccount(instagramHandle: "@tommy.trojan", termsAcceptedVersion: LegalDocuments.termsVersion,
+        account = PrivateAccount(termsAcceptedVersion: LegalDocuments.termsVersion,
                                  privacyAcceptedVersion: LegalDocuments.privacyVersion, ageConfirmed: true)
+        preferences = MatchPreferences(matchGender: .man, showMe: Set(MatchGender.allCases), ageMin: 18, ageMax: 120)
         profile = Profile(
             id: myID, firstName: "Tommy", age: 21, pronouns: "he/him", gender: "Man",
             interests: ["Music", "Design", "Coffee"], vibeTags: ["Night owl", "Deep talks"],
-            promptQuestion: ProfilePrompts.all[1], promptAnswer: "The Village fountain with an iced latte.",
+            promptQuestion: ProfilePrompts.all[1], promptAnswer: "McCarthy Quad with an iced latte.",
             intention: .figuringItOut, availability: .either, photoPaths: ["avatar:heart.fill|pink"],
             photoReviewStatus: .pending
         )
     }
 
     private func pause() async throws {
-        try await Task.sleep(for: options.latency)
+        if options.latency > .zero { try await Task.sleep(for: options.latency) }
         runDueScripts()
     }
 
@@ -118,190 +163,206 @@ final class DemoBackend: CrushlyBackend {
             .map { ($0.profile.firstName, $0.script.note) }
     }
 
+    /// Demo-only: local image bytes for an uploaded demo photo.
+    func demoPhotoData(for path: String) -> Data? { photoStore[path] }
+
     // MARK: Scripted behaviour
 
-    private func schedule(at date: Date, _ run: @escaping () -> Void) {
-        scheduled.append((date, run))
+    private func schedule(after delay: TimeInterval, _ run: @escaping () -> Void) {
+        scheduled.append((now().addingTimeInterval(delay), run))
     }
 
     private func runDueScripts() {
-        let current = now()
-        let due = scheduled.filter { $0.at <= current }
-        scheduled.removeAll { $0.at <= current }
-        due.forEach { $0.run() }
         expireLifecycle()
-    }
-
-    private func scriptedSignal(from sender: UUID) {
-        guard !isBlockedBetween(sender, myID), !isShielded(myID) else { return }
-        guard !signals.contains(where: { $0.sender == sender && $0.recipient == myID && $0.status == .pending }) else { return }
-        _ = insertSignal(sender: sender, recipient: myID)
-    }
-
-    // MARK: Rules (mirror of the SQL predicates)
-
-    private func liveSession(of user: UUID, at date: Date) -> (spaceID: UUID, paused: Bool)? {
-        if user == myID {
-            guard let session, session.state(at: date) == .live else { return nil }
-            return (session.spaceID, false)
+        while let index = scheduled.firstIndex(where: { $0.at <= now() }) {
+            let item = scheduled.remove(at: index)
+            item.run()
+            expireLifecycle()
         }
-        guard let person = people[user], let space = person.script.spaceID, let minutes = person.script.sessionMinutes,
-              !person.script.paused else { return nil }
-        guard startedAt.addingTimeInterval(minutes * 60) > date else { return nil }
-        return (space, false)
     }
 
-    private func isShielded(_ user: UUID) -> Bool {
-        if user == myID { return shield?.isActive(at: now()) ?? false }
-        return people[user]?.script.shielded ?? false
+    /// The person "discovers" you and expresses interest, exactly as `express_interest` would for them.
+    private func scriptedInterest(from person: UUID) {
+        guard let me = mySession, me.leaseExpiresAt > now(), let theirs = personSessions[person],
+              canMatch(person, myID), matchBetween(myID, person) == nil,
+              !interests.contains(where: { $0.sender == theirs && $0.recipient == me.id }) else { return }
+        exposures.insert(SessionPair(viewer: theirs, target: me.id))
+        if let mine = interests.firstIndex(where: { $0.sender == me.id && $0.recipient == theirs }) {
+            interests.remove(at: mine)
+            createMatch(with: person)
+        } else {
+            interests.append(Interest(sender: theirs, recipient: me.id, visibleAt: now().addingTimeInterval(options.receiptDelay)))
+        }
+    }
+
+    private func scriptedReply(in matchID: UUID) {
+        guard let match = matches[matchID], !isBlockedBetween(myID, match.other),
+              let lines = people[match.other]?.script.replies else { return }
+        let index = replyCursor[match.other, default: 0]
+        guard index < lines.count else { return }
+        replyCursor[match.other] = index + 1
+        appendMessage(DemoMessage(id: UUID(), senderID: match.other, body: lines[index], createdAt: nextMessageTime(in: matchID)),
+                      to: matchID)
+    }
+
+    /// Mirror of crushly_tick + the lazy `lease_expires_at > now()` checks.
+    private func expireLifecycle() {
+        if let session = mySession, session.leaseExpiresAt <= now() {
+            purgeSession(session.id)
+            mySession = nil
+        }
+        if matchingPaused, let until = pausedUntil, until <= now() {
+            matchingPaused = false
+            pausedUntil = nil
+        }
+    }
+
+    /// Deleting a session cascades to its interests and exposures (FK on delete cascade).
+    private func purgeSession(_ id: UUID) {
+        interests.removeAll { $0.sender == id || $0.recipient == id }
+        exposures = exposures.filter { $0.viewer != id && $0.target != id }
+    }
+
+    private func personLeaves(_ person: UUID) {
+        guard let session = personSessions.removeValue(forKey: person) else { return }
+        purgeSession(session)
+    }
+
+    // MARK: Predicates (mirror of the SQL helpers)
+
+    private struct ActiveSession { let id: UUID; let slug: String; let version: Int }
+
+    private func activeSession(of user: UUID) -> ActiveSession? {
+        if user == myID {
+            guard let s = mySession, s.leaseExpiresAt > now() else { return nil }
+            return ActiveSession(id: s.id, slug: s.slug, version: s.boundaryVersion)
+        }
+        guard let id = personSessions[user], let slug = people[user]?.script.space,
+              let zone = zones.first(where: { $0.slug == slug }) else { return nil }
+        return ActiveSession(id: id, slug: slug, version: zone.boundaryVersion)
+    }
+
+    private func owner(ofSession id: UUID) -> UUID? {
+        if mySession?.id == id { return myID }
+        return personSessions.first { $0.value == id }?.key
+    }
+
+    private func isPaused(_ user: UUID) -> Bool {
+        if user == myID { return matchingPaused && (pausedUntil.map { $0 > now() } ?? true) }
+        return people[user]?.script.paused ?? false
     }
 
     private func isBlockedBetween(_ a: UUID, _ b: UUID) -> Bool {
-        blocks.contains(Pair(a: a, b: b)) || blocks.contains(Pair(a: b, b: a))
+        blocks.contains(UserPair(blocker: a, blocked: b)) || blocks.contains(UserPair(blocker: b, blocked: a))
     }
 
-    private func reviewStatus(_ user: UUID) -> ReviewStatus {
-        user == myID ? (profile?.photoReviewStatus ?? .pending) : (people[user]?.profile.photoReviewStatus ?? .pending)
+    private func matchBetween(_ a: UUID, _ b: UUID) -> UUID? {
+        let other = a == myID ? b : a
+        return matches.values.first { $0.other == other }?.id
     }
 
-    private func isDiscoverableToMe(_ target: UUID) -> Bool {
-        let date = now()
-        guard target != myID, profile?.isComplete == true,
-              let mine = liveSession(of: myID, at: date), let theirs = liveSession(of: target, at: date),
-              mine.spaceID == theirs.spaceID,
-              !isShielded(myID), !isShielded(target), !isBlockedBetween(myID, target),
-              reviewStatus(target) != .rejected else { return false }
-        if people[target]?.script.verifiedOnly == true, reviewStatus(myID) != .approved { return false }
-        if account.verifiedOnlyDiscovery, reviewStatus(target) != .approved { return false }
+    private func matchingReady(_ user: UUID) -> Bool {
+        if user == myID {
+            return profile?.isComplete == true && account.ageConfirmed && account.termsAcceptedVersion != nil
+                && account.privacyAcceptedVersion != nil && preferences.isComplete
+        }
+        return people[user] != nil
+    }
+
+    private struct Prefs { let gender: MatchGender?; let showMe: Set<MatchGender>; let ages: ClosedRange<Int>; let verifiedOnly: Bool; let age: Int; let review: ReviewStatus }
+
+    private func prefs(of user: UUID) -> Prefs? {
+        if user == myID {
+            guard let profile, preferences.ageMin <= preferences.ageMax else { return nil }
+            return Prefs(gender: preferences.matchGender, showMe: preferences.showMe, ages: preferences.ageMin...preferences.ageMax,
+                         verifiedOnly: account.verifiedOnlyDiscovery, age: profile.age, review: profile.photoReviewStatus)
+        }
+        guard let person = people[user] else { return nil }
+        return Prefs(gender: person.script.matchGender, showMe: person.script.showMe, ages: person.script.ageRange,
+                     verifiedOnly: person.script.verifiedOnly, age: person.profile.age, review: person.profile.photoReviewStatus)
+    }
+
+    /// `can_match(a, b)`: the single eligibility predicate used at discovery, interest and match creation.
+    private func canMatch(_ a: UUID, _ b: UUID) -> Bool {
+        guard a != b, matchingReady(a), matchingReady(b),
+              let sa = activeSession(of: a), let sb = activeSession(of: b), sa.slug == sb.slug, sa.version == sb.version,
+              let pa = prefs(of: a), let pb = prefs(of: b), let ga = pa.gender, let gb = pb.gender,
+              pa.showMe.contains(gb), pb.showMe.contains(ga), pa.ages.contains(pb.age), pb.ages.contains(pa.age),
+              pa.review != .rejected, pb.review != .rejected,
+              !pa.verifiedOnly || pb.review == .approved, !pb.verifiedOnly || pa.review == .approved,
+              !isPaused(a), !isPaused(b), !isBlockedBetween(a, b) else { return false }
         return true
-    }
-
-    private func encounteredRecently(_ target: UUID) -> Bool {
-        guard let seen = encounters[target] else { return false }
-        return now().timeIntervalSince(seen) < Double(rules.encounterWindowHours) * 3600
-    }
-
-    private func crowd(in space: UUID) -> Int {
-        let date = now()
-        let others = people.keys.filter { liveSession(of: $0, at: date)?.spaceID == space && !isShielded($0) }.count
-        return others + (liveSession(of: myID, at: date)?.spaceID == space ? 1 : 0)
-    }
-
-    @discardableResult
-    private func insertSignal(sender: UUID, recipient: UUID) -> SendSignalResult {
-        let date = now()
-        let senderSpace = liveSession(of: sender, at: date)?.spaceID
-        let signal = DemoSignal(
-            sender: sender, recipient: recipient, spaceID: senderSpace, createdAt: date,
-            expiresAt: date.addingTimeInterval(Double(rules.signalValidityHours) * 3600),
-            visibleAt: date.addingTimeInterval(options.receiptDelay),
-            spaceDisclosable: senderSpace.map { crowd(in: $0) >= 5 } ?? false
-        )
-        signals.append(signal)
-        if sender == myID { session?.signalsSent += 1 }
-        let remaining = rules.signalsPerSession - (session?.signalsSent ?? 0)
-
-        // Reciprocal pending signal → exactly one match.
-        if let reciprocalIndex = signals.firstIndex(where: {
-            $0.sender == recipient && $0.recipient == sender && $0.status == .pending && $0.expiresAt > date
-        }) {
-            let other = sender == myID ? recipient : sender
-            if let existing = matchesByID.values.first(where: { $0.other == other }) {
-                return .matched(matchID: existing.id, remaining: remaining)
-            }
-            let mine = liveSession(of: myID, at: date)
-            let theirs = liveSession(of: other, at: date)
-            let kind: MatchKind = (mine != nil && theirs != nil && mine?.spaceID == theirs?.spaceID) ? .heartSync : .crossedHearts
-            let match = DemoMatch(
-                id: UUID(), other: other, kind: kind, spaceID: mine?.spaceID ?? senderSpace, createdAt: date,
-                connection: Connection(status: .pendingConfirmation,
-                                       confirmBy: date.addingTimeInterval(Double(rules.connectionConfirmHours) * 3600))
-            )
-            matchesByID[match.id] = match
-            scheduleAfterMatch(match.id, other: other)
-            signals[reciprocalIndex].status = .matched
-            signals[reciprocalIndex].matchID = match.id
-            signals[signals.count - 1].status = .matched
-            signals[signals.count - 1].matchID = match.id
-            return .matched(matchID: match.id, remaining: remaining)
-        }
-
-        if sender == myID, let reply = people[recipient]?.script.replyAfter {
-            schedule(at: date.addingTimeInterval(reply)) { [weak self] in self?.scriptedSignal(from: recipient) }
-        }
-        return .sent(remaining: remaining)
-    }
-
-    private func scheduleAfterMatch(_ matchID: UUID, other: UUID) {
-        for (delay, action) in people[other]?.script.afterMatch ?? [] {
-            schedule(at: now().addingTimeInterval(delay)) { [weak self] in
-                guard let self, var match = self.matchesByID[matchID], !self.isBlockedBetween(self.myID, other),
-                      [.pendingConfirmation, .metTonight, .findLater].contains(match.connection.status) else { return }
-                let date = self.now()
-                switch action {
-                case .suggest(let kind, let detail):
-                    guard !match.actions.contains(where: { $0.kind == kind && $0.status == .pending }) else { return }
-                    match.actions.append(ConnectionAction(id: UUID(), actorID: other, kind: kind, detail: detail,
-                                                          status: .pending, createdAt: date))
-                case .requestFind(let point):
-                    guard self.hasSession(self.myID, at: date), self.hasSession(other, at: date), !self.isShielded(self.myID),
-                          match.find.map({ $0.status != .pending && $0.status != .accepted }) ?? true else { return }
-                    match.find = FindRequest(id: UUID(), requesterID: other, status: .pending, meetingPoint: point,
-                                             respondBy: date.addingTimeInterval(Double(self.rules.findRequestTimeoutMinutes) * 60))
-                }
-                self.matchesByID[matchID] = match
-            }
-        }
-    }
-
-    /// A paused or live (not ended, not expired) session — the server's condition for keeping a meet-up open.
-    private func hasSession(_ user: UUID, at date: Date) -> Bool {
-        if user == myID { return session.map { $0.endedAt == nil && $0.expiresAt > date } ?? false }
-        guard let person = people[user], person.script.spaceID != nil, let minutes = person.script.sessionMinutes else { return false }
-        return startedAt.addingTimeInterval(minutes * 60) > date
-    }
-
-    private func expireLifecycle() {
-        let date = now()
-        for index in signals.indices where signals[index].status == .pending && signals[index].expiresAt <= date {
-            signals[index].status = .expired
-        }
-        for (id, var match) in matchesByID {
-            switch match.connection.status {
-            case .pendingConfirmation where match.connection.confirmBy <= date,
-                 .metTonight where (match.connection.activeUntil ?? .distantFuture) <= date,
-                 .findLater where (match.connection.activeUntil ?? .distantFuture) <= date:
-                match.connection.status = .expired
-            default: break
-            }
-            if var find = match.find, find.status == .pending, find.respondBy <= date {
-                find.status = .timedOut
-                match.find = find
-            } else if var find = match.find, find.status == .accepted, (find.activeUntil ?? .distantFuture) <= date {
-                find.status = .completed   // matches the server's tick
-                match.find = find
-            }
-            // Either person leaving Pulse ends an open meet-up (server: crushly_tick / end_open_finds).
-            if var find = match.find, find.status == .pending || find.status == .accepted,
-               !hasSession(myID, at: date) || !hasSession(match.other, at: date) {
-                find.status = .cancelled
-                match.find = find
-            }
-            matchesByID[id] = match
-        }
-    }
-
-    private func publicProfile(_ id: UUID) -> PublicProfile? {
-        guard var profile = people[id]?.profile else { return nil }
-        if let space = liveSession(of: id, at: now())?.spaceID {
-            profile.spaceName = spaces.first { $0.id == space }?.name
-        }
-        return profile
     }
 
     private func requireSignedIn() throws {
         guard signedInEmail != nil else { throw CrushlyError.notAuthenticated }
     }
+
+    /// Fixed-window counters, like `enforce_rate_limit`.
+    private func enforceRateLimit(_ bucket: String, _ limits: [(max: Int, window: Int)]) throws {
+        guard options.enforceRateLimits else { return }
+        let t = now().timeIntervalSince1970
+        for limit in limits {
+            let start = Int(t / Double(limit.window)) * limit.window
+            let key = "\(bucket):\(limit.window):\(start)"
+            rateHits[key, default: 0] += 1
+            if rateHits[key]! > limit.max { throw CrushlyError.rateLimited }
+        }
+    }
+
+    /// `check_evidence`: plausibility only. The demo can't verify location any more than the server can.
+    private func checkEvidence(_ e: LocationEvidence, previousFixMs: Int64?, allowStationary: Bool) throws -> Int64 {
+        let ts = Int64((e.fixTimestamp.timeIntervalSince1970 * 1000).rounded())
+        let age = Int64((e.fixAge * 1000).rounded())
+        guard age >= 0, e.horizontalAccuracy > 0, e.horizontalAccuracy.isFinite else { throw CrushlyError.invalidInput("Bad evidence.") }
+        if e.stationary && !allowStationary { throw CrushlyError.staleEvidence }
+        if e.horizontalAccuracy > rules.evidenceMaxAccuracyMeters { throw CrushlyError.insufficientAccuracy }
+        let maxAge = e.stationary ? rules.evidenceStationaryMaxFixAgeSeconds : rules.evidenceMaxFixAgeSeconds
+        if Double(age) > maxAge * 1000 { throw CrushlyError.staleEvidence }
+        if let previousFixMs, (!e.stationary && ts <= previousFixMs) || (e.stationary && ts < previousFixMs) {
+            throw CrushlyError.staleEvidence
+        }
+        return ts
+    }
+
+    private func endMyParticipation() -> Int64 {
+        consentEpoch += 1
+        if let session = mySession { purgeSession(session.id) }
+        mySession = nil
+        return consentEpoch
+    }
+
+    private func createMatch(with other: UUID) {
+        guard matchBetween(myID, other) == nil else { return }
+        let match = DemoMatch(id: UUID(), other: other, createdAt: now())
+        matches[match.id] = match
+        poke(.match, match.id)
+    }
+
+    private func deleteMatch(_ id: UUID) {
+        guard matches.removeValue(forKey: id) != nil else { return }
+        messages[id] = nil
+        deletedMatchIDs.insert(id)
+        poke(.conversationRemoved, id)
+    }
+
+    /// Mirrors the realtime triggers: content-free pokes only.
+    private func poke(_ kind: RealtimePoke.Kind, _ matchID: UUID) {
+        pokeContinuation?.yield(RealtimePoke(kind: kind, matchID: matchID))
+    }
+
+    private func nextMessageTime(in matchID: UUID) -> Date {
+        let last = messages[matchID]?.last?.createdAt ?? .distantPast
+        return max(now(), last.addingTimeInterval(0.001))
+    }
+
+    private func appendMessage(_ message: DemoMessage, to matchID: UUID) {
+        messages[matchID, default: []].append(message)
+        poke(.message, matchID)
+    }
+
+    /// Demo only: lets scripted replies arrive without the user doing anything (the live app gets a poke).
+    func runScriptsNow() { runDueScripts() }
 
     // MARK: AuthService
 
@@ -330,15 +391,19 @@ final class DemoBackend: CrushlyBackend {
     #endif
 
     func signOut() async throws {
+        await stopPokes()
         signedInEmail = nil
     }
 
     func deleteAccount() async throws {
         try await pause()
-        // Remove everything tied to this account. Fictional people's scripts no longer target it.
-        profile = nil; account = PrivateAccount(); prefs = NotificationPrefs(); session = nil; shield = nil
-        photoStore = [:]; signals = []; matchesByID = [:]; blocks = []; blockedAt = [:]; encounters = [:]
-        scheduled = []
+        // Everything tied to this account goes. Fictional people's scripts no longer target it.
+        profile = nil; account = PrivateAccount(); preferences = MatchPreferences(); prefs = NotificationPrefs()
+        _ = endMyParticipation()
+        matchingPaused = false; pausedUntil = nil
+        photoStore = [:]; interests = []; exposures = []; blocks = []; blockedAt = [:]
+        for id in matches.keys { deleteMatch(id) }
+        scheduled = []; replyCursor = [:]
         signedInEmail = nil
     }
 
@@ -347,15 +412,8 @@ final class DemoBackend: CrushlyBackend {
     func loadAccount() async throws -> AccountSnapshot {
         try await pause()
         try requireSignedIn()
-        if var current = session, current.state(at: now()) == .expired {
-            current.endedAt = current.expiresAt
-            session = current
-        }
-        if shield.map({ !$0.isActive(at: now()) }) == true { shield = nil }
-        return AccountSnapshot(
-            userID: myID, email: signedInEmail ?? "", profile: profile, account: account,
-            pulse: session?.endedAt == nil ? session : nil, shield: shield, prefs: prefs, rules: rules, serverNow: now()
-        )
+        return AccountSnapshot(userID: myID, email: signedInEmail ?? "", profile: profile, account: account,
+                               preferences: preferences, prefs: prefs, rules: rules, serverNow: now())
     }
 
     func saveProfile(_ draft: Profile) async throws -> Profile {
@@ -378,10 +436,19 @@ final class DemoBackend: CrushlyBackend {
         return saved
     }
 
-    func savePrivate(instagramHandle: String, verifiedOnlyDiscovery: Bool) async throws {
+    func saveVerifiedOnlyDiscovery(_ enabled: Bool) async throws {
         try await pause()
-        account.instagramHandle = instagramHandle
-        account.verifiedOnlyDiscovery = verifiedOnlyDiscovery
+        try requireSignedIn()
+        account.verifiedOnlyDiscovery = enabled
+    }
+
+    func updateMatchPreferences(_ p: MatchPreferences) async throws {
+        try await pause()
+        try requireSignedIn()
+        guard p.matchGender != nil, !p.showMe.isEmpty, p.ageMin >= 18, p.ageMax <= 120, p.ageMin <= p.ageMax else {
+            throw CrushlyError.invalidInput("Please check your matching preferences.")
+        }
+        preferences = p
     }
 
     func acceptTerms(termsVersion: String, privacyVersion: String, ageConfirmed: Bool) async throws {
@@ -405,351 +472,294 @@ final class DemoBackend: CrushlyBackend {
 
     func photoURL(for path: String) async -> URL? { nil }
 
-    /// Demo-only: local image bytes for an uploaded demo photo.
-    func demoPhotoData(for path: String) -> Data? { photoStore[path] }
-
     // MARK: SpaceService
 
-    func spaces() async throws -> [CampusSpace] {
-        try await pause()
-        return spaces
-    }
-
-    func enterSpaceCode(_ code: String) async throws -> CampusSpace {
-        try await pause()
-        let normalized = code.uppercased().trimmingCharacters(in: .whitespaces)
-        guard let id = DemoWorld.eventCodes[normalized], let space = spaces.first(where: { $0.id == id }) else {
-            throw CrushlyError.invalidCode
-        }
-        return space
-    }
-
-    // MARK: PulseService
-
-    func startPulse(spaceID: UUID, durationMinutes: Int?, untilEventEnd: Bool, availability: Availability) async throws -> PulseSession {
+    func zones() async throws -> [SpaceZone] {
         try await pause()
         try requireSignedIn()
-        guard profile?.isComplete == true else { throw CrushlyError.profileIncomplete }
-        guard account.hasAcceptedCurrentTerms else { throw CrushlyError.termsRequired }
-        guard !isShielded(myID) else { throw CrushlyError.shielded }
-        guard let space = spaces.first(where: { $0.id == spaceID }) else { throw CrushlyError.notFound }
-        let date = now()
-        let expires: Date
-        if untilEventEnd {
-            guard let end = space.endsAt, end > date else { throw CrushlyError.invalidDuration }
-            expires = end
+        return zones.filter { $0.isUsable(allowDrafts: rules.allowDraftSpaces) }
+    }
+
+    // MARK: ParticipationService
+
+    func myParticipation() async throws -> ParticipationStatus {
+        try await pause()
+        try requireSignedIn()
+        return participationStatus()
+    }
+
+    private func participationStatus() -> ParticipationStatus {
+        let paused = isPaused(myID)
+        let session = mySession.flatMap { s in
+            s.leaseExpiresAt > now()
+                ? ParticipationSession(id: s.id, spaceSlug: s.slug, boundaryVersion: s.boundaryVersion,
+                                       leaseExpiresAt: s.leaseExpiresAt, lastSeq: s.lastSeq)
+                : nil
+        }
+        return ParticipationStatus(serverNow: now(), consentEpoch: consentEpoch, matchingPaused: paused,
+                                   pausedUntil: paused ? pausedUntil : nil, session: session)
+    }
+
+    func openParticipation(spaceSlug: String, boundaryVersion: Int, consentEpoch epoch: Int64, clientRequestID: UUID,
+                           evidence: LocationEvidence) async throws -> ParticipationLease {
+        try await pause()
+        try requireSignedIn()
+        // Idempotent retry of the request that created the current, still-valid session.
+        if let s = mySession, s.clientRequestID == clientRequestID, s.consentEpoch == epoch, s.leaseExpiresAt > now() {
+            return ParticipationLease(sessionID: s.id, leaseExpiresAt: s.leaseExpiresAt, serverNow: now())
+        }
+        try enforceRateLimit("open", [(30, 3600)])
+        if isPaused(myID) { throw CrushlyError.matchingPaused }
+        if epoch != consentEpoch { throw CrushlyError.consentStale }
+        if !matchingReady(myID) { throw CrushlyError.profileIncomplete }
+        guard let zone = zones.first(where: { $0.slug == spaceSlug && $0.isUsable(allowDrafts: rules.allowDraftSpaces) }) else {
+            throw CrushlyError.spaceUnavailable
+        }
+        if zone.boundaryVersion != boundaryVersion { throw CrushlyError.boundaryOutdated }
+        let fix = try checkEvidence(evidence, previousFixMs: nil, allowStationary: false)
+
+        // Never transfer consent: whatever existed before ends now, interests included.
+        if let old = mySession { purgeSession(old.id) }
+        let session = MySession(id: UUID(), slug: zone.slug, boundaryVersion: zone.boundaryVersion, consentEpoch: consentEpoch,
+                                clientRequestID: clientRequestID,
+                                leaseExpiresAt: now().addingTimeInterval(TimeInterval(rules.participationLeaseSeconds)),
+                                lastSeq: 0, lastFixMs: fix, interestsSent: 0)
+        mySession = session
+
+        for person in people.values {
+            let id = person.profile.id
+            if let after = person.script.interestedAfter {
+                schedule(after: after) { [weak self] in self?.scriptedInterest(from: id) }
+            }
+            if let after = person.script.leavesAfter, !departureScheduled {
+                schedule(after: after) { [weak self] in self?.personLeaves(id) }
+            }
+        }
+        departureScheduled = true
+        runDueScripts()
+        return ParticipationLease(sessionID: session.id, leaseExpiresAt: session.leaseExpiresAt, serverNow: now())
+    }
+
+    func renewParticipation(sessionID: UUID, seq: Int64, evidence: LocationEvidence) async throws -> ParticipationLease {
+        try await pause()
+        try requireSignedIn()
+        try enforceRateLimit("renew", [(12, 60)])
+        guard var s = mySession, s.id == sessionID, s.leaseExpiresAt > now() else { throw CrushlyError.sessionExpired }
+        if isPaused(myID) { throw CrushlyError.matchingPaused }
+        if seq <= s.lastSeq { throw CrushlyError.staleRequest }
+        let fix = try checkEvidence(evidence, previousFixMs: s.lastFixMs, allowStationary: true)
+        s.leaseExpiresAt = now().addingTimeInterval(TimeInterval(rules.participationLeaseSeconds))
+        s.lastSeq = seq
+        s.lastFixMs = fix
+        mySession = s
+        return ParticipationLease(sessionID: s.id, leaseExpiresAt: s.leaseExpiresAt, serverNow: now())
+    }
+
+    @discardableResult
+    func revokeParticipation() async throws -> Int64 {
+        try await pause()
+        try requireSignedIn()
+        return endMyParticipation()
+    }
+
+    func setMatchingPaused(_ paused: Bool, minutes: Int?) async throws -> ParticipationStatus {
+        try await pause()
+        try requireSignedIn()
+        if paused, let minutes, !rules.pauseDurationsMinutes.contains(minutes) { throw CrushlyError.invalidDuration }
+        if paused {
+            _ = endMyParticipation()
+            matchingPaused = true
+            pausedUntil = minutes.map { now().addingTimeInterval(TimeInterval($0) * 60) }
         } else {
-            guard let minutes = durationMinutes, rules.pulseDurationsMinutes.contains(minutes) else { throw CrushlyError.invalidDuration }
-            expires = date.addingTimeInterval(Double(minutes) * 60)
+            // Resuming never opens a session; the user must be in a space and consent again.
+            matchingPaused = false
+            pausedUntil = nil
         }
-        session = PulseSession(id: UUID(), spaceID: spaceID, availability: availability, startedAt: date,
-                               expiresAt: expires, pausedAt: nil, endedAt: nil, signalsSent: 0)
-        profile?.availability = availability
-        return session!
+        return participationStatus()
     }
 
-    func pausePulse() async throws -> PulseSession {
+    // MARK: DiscoveryService
+
+    func discoverCandidates() async throws -> DiscoveryResult {
         try await pause()
-        guard var current = session, current.endedAt == nil else { throw CrushlyError.noLiveSession }
-        guard current.state(at: now()) != .expired else { throw CrushlyError.sessionExpired }
-        current.pausedAt = now()
-        session = current
-        return current
+        try requireSignedIn()
+        guard let me = activeSession(of: myID) else { throw CrushlyError.notParticipating }
+        try enforceRateLimit("discover", [(1, 15), (60, 3600)])
+        let others = people.keys.filter { activeSession(of: $0).map { $0.slug == me.slug && $0.version == me.version } ?? false }
+        if others.count + 1 < rules.discoveryMinParticipants { return .quiet }   // never an exact count
+        let picked = others
+            .filter { matchBetween(myID, $0) == nil && canMatch(myID, $0) }
+            .shuffled()                                                       // no stable order to diff
+            .prefix(rules.discoveryMaxResults)
+        for id in picked { if let theirs = activeSession(of: id) { exposures.insert(SessionPair(viewer: me.id, target: theirs.id)) } }
+        return .candidates(picked.compactMap { people[$0]?.profile })
     }
 
-    func resumePulse() async throws -> PulseSession {
+    func expressInterest(in target: UUID) async throws -> InterestResult {
         try await pause()
-        guard var current = session, current.endedAt == nil else { throw CrushlyError.noLiveSession }
-        guard current.expiresAt > now() else { throw CrushlyError.sessionExpired }
-        current.pausedAt = nil
-        session = current
-        return current
-    }
+        try requireSignedIn()
+        guard target != myID else { throw CrushlyError.invalidInput("You can't do that.") }
+        try enforceRateLimit("interest", [(30, 3600)])
+        guard var me = mySession, me.leaseExpiresAt > now() else { throw CrushlyError.notParticipating }
+        guard let them = activeSession(of: target), canMatch(myID, target),
+              exposures.contains(SessionPair(viewer: me.id, target: them.id)) else { throw CrushlyError.notAvailable }
+        if matchBetween(myID, target) != nil { throw CrushlyError.alreadyMatched }
+        if interests.contains(where: { $0.sender == me.id && $0.recipient == them.id }) { throw CrushlyError.alreadySent }
+        if me.interestsSent >= rules.interestsPerSession { throw CrushlyError.limitReached }
 
-    func endPulse() async throws {
-        try await pause()
-        session?.endedAt = now()
-        session = nil
-        expireLifecycle()
-    }
-
-    func aroundProfiles() async throws -> [PublicProfile] {
-        try await pause()
-        guard liveSession(of: myID, at: now()) != nil else {
-            if rules.requireOwnPulseToViewAround { throw CrushlyError.noLiveSession }
-            return []
+        me.interestsSent += 1
+        mySession = me
+        let remaining = rules.interestsPerSession - me.interestsSent
+        if let reciprocal = interests.firstIndex(where: { $0.sender == them.id && $0.recipient == me.id }) {
+            interests.remove(at: reciprocal)
+            createMatch(with: target)
+            return .matched(matchID: matchBetween(myID, target)!, remaining: remaining)
         }
-        let visible = people.keys.filter(isDiscoverableToMe).sorted { $0.uuidString < $1.uuidString }
-        let date = now()
-        for id in visible { encounters[id] = date }
-        return visible.compactMap(publicProfile)
-    }
-
-    func recentEncounters() async throws -> [PublicProfile] {
-        try await pause()
-        return encounters.keys
-            .filter { encounteredRecently($0) && !isDiscoverableToMe($0) && !isBlockedBetween(myID, $0) }
-            .filter { id in !matchesByID.values.contains { $0.other == id } }
-            .sorted { (encounters[$0] ?? .distantPast) > (encounters[$1] ?? .distantPast) }
-            .compactMap { id in
-                var profile = people[id]?.profile
-                profile?.spaceName = nil
-                return profile
-            }
-    }
-
-    // MARK: SignalService
-
-    func sendHeartSignal(to recipient: UUID) async throws -> SendSignalResult {
-        try await pause()
-        let date = now()
-        guard recipient != myID else { throw CrushlyError.selfSignal }
-        guard let current = session, current.state(at: date) == .live else { throw CrushlyError.noLiveSession }
-        guard profile?.isComplete == true else { throw CrushlyError.profileIncomplete }
-        guard !isShielded(myID) else { throw CrushlyError.shielded }
-        guard !isShielded(recipient), !isBlockedBetween(myID, recipient),
-              isDiscoverableToMe(recipient) || encounteredRecently(recipient) else { throw CrushlyError.notAvailable }
-        guard !matchesByID.values.contains(where: { $0.other == recipient }) else { throw CrushlyError.alreadyMatched }
-        guard current.signalsSent < rules.signalsPerSession else { throw CrushlyError.limitReached }
-        guard !signals.contains(where: { $0.sender == myID && $0.recipient == recipient && $0.status == .pending && $0.expiresAt > date }) else {
-            throw CrushlyError.alreadySignaled
+        interests.append(Interest(sender: me.id, recipient: them.id, visibleAt: now().addingTimeInterval(options.receiptDelay)))
+        if let reply = people[target]?.script.replyAfter {
+            schedule(after: reply) { [weak self] in self?.scriptedInterest(from: target) }
         }
-        return insertSignal(sender: myID, recipient: recipient)
+        return .sent(remaining: remaining)
     }
 
-    func receipts() async throws -> [SignalReceipt] {
+    func interestReceipts() async throws -> Int {
         try await pause()
-        let date = now()
-        return signals
-            .filter { $0.recipient == myID && $0.status == .pending && $0.visibleAt <= date && $0.expiresAt > date }
-            .filter { !isBlockedBetween($0.sender, myID) }
-            .sorted { $0.createdAt > $1.createdAt }
-            .map { signal in
-                // Same coarsening as the server: 15-minute buckets, space only when crowded. No sender.
-                let bucket = Date(timeIntervalSince1970: (signal.createdAt.timeIntervalSince1970 / 900).rounded(.down) * 900)
-                let space = signal.spaceDisclosable ? spaces.first { $0.id == signal.spaceID }?.name : nil
-                return SignalReceipt(id: signal.id, receivedBucket: bucket, spaceName: space)
-            }
+        try requireSignedIn()
+        guard let me = activeSession(of: myID) else { return 0 }
+        return interests.filter { interest in
+            guard interest.recipient == me.id, interest.visibleAt <= now(), let sender = owner(ofSession: interest.sender),
+                  activeSession(of: sender) != nil else { return false }
+            return !isBlockedBetween(myID, sender)
+        }.count
     }
 
-    func sentSignals() async throws -> [SentSignal] {
+    func sentInterests() async throws -> Set<UUID> {
         try await pause()
-        return signals.filter { $0.sender == myID }.sorted { $0.createdAt > $1.createdAt }.compactMap { signal in
-            guard let recipient = people[signal.recipient]?.profile else { return nil }
-            return SentSignal(id: signal.id, recipient: recipient, createdAt: signal.createdAt,
-                              expiresAt: signal.expiresAt, status: signal.status)
-        }
+        try requireSignedIn()
+        guard let me = activeSession(of: myID) else { return [] }
+        return Set(interests.filter { $0.sender == me.id }.compactMap { owner(ofSession: $0.recipient) })
     }
 
-    // MARK: MatchService
+    // MARK: ConversationService
 
-    func matches() async throws -> [Match] {
+    func conversations() async throws -> [Conversation] {
         try await pause()
-        return matchesByID.values
+        try requireSignedIn()
+        return matches.values
             .filter { !isBlockedBetween(myID, $0.other) }
-            .sorted { $0.createdAt > $1.createdAt }
-            .compactMap { match in
+            .compactMap { match -> Conversation? in
                 guard let other = people[match.other]?.profile else { return nil }
-                return Match(id: match.id, kind: match.kind, createdAt: match.createdAt,
-                             spaceName: spaces.first { $0.id == match.spaceID }?.name, other: other,
-                             connection: match.connection, openFind: match.find, actions: match.actions)
+                let last = messages[match.id]?.last
+                let unread = last.map { $0.senderID != myID && $0.createdAt > (match.myLastReadAt ?? .distantPast) } ?? false
+                return Conversation(id: match.id, createdAt: match.createdAt, other: other, lastMessageAt: last?.createdAt,
+                                    lastMessagePreview: last.map { String($0.body.prefix(80)) },
+                                    lastMessageFromMe: last.map { $0.senderID == myID }, unread: unread)
             }
+            .sorted { ($0.lastMessageAt ?? $0.createdAt) > ($1.lastMessageAt ?? $1.createdAt) }
     }
 
-    private func mutateMatch(_ id: UUID, _ change: (inout DemoMatch) throws -> Void) throws {
-        guard var match = matchesByID[id], !isBlockedBetween(myID, match.other) else { throw CrushlyError.notFound }
-        try change(&match)
-        matchesByID[id] = match
+    private func requireParticipant(_ matchID: UUID) throws -> DemoMatch {
+        guard let match = matches[matchID], !isBlockedBetween(myID, match.other) else { throw CrushlyError.notFound }
+        return match
     }
 
-    private func touch(_ match: inout DemoMatch) {
-        let date = now()
-        match.connection.lastActivityAt = date
-        if match.connection.status == .pendingConfirmation { match.connection.status = .findLater }
-        if match.connection.confirmedAt == nil { match.connection.confirmedAt = date }
-        match.connection.activeUntil = date.addingTimeInterval(Double(rules.connectionInactiveDays) * 86400)
-    }
-
-    func setConnectionStatus(matchID: UUID, status: ConnectionStatus) async throws {
+    func fetchMessages(matchID: UUID, before: MessageCursor?, limit: Int) async throws -> [ChatMessage] {
         try await pause()
-        try mutateMatch(matchID) { match in
-            guard match.connection.status != .expired || status == .removed else { throw CrushlyError.requestExpired }
-            switch status {
-            case .metTonight, .findLater:
-                touch(&match)
-                match.connection.status = status
-            case .removed:
-                match.connection.status = .removed
-                if var find = match.find, find.status == .pending || find.status == .accepted {
-                    find.status = .cancelled
-                    match.find = find
-                }
-            default: throw CrushlyError.notPermitted
-            }
-        }
+        try requireSignedIn()
+        _ = try requireParticipant(matchID)
+        func key(_ date: Date, _ id: UUID) -> (Date, String) { (date, id.uuidString.lowercased()) }
+        return (messages[matchID] ?? [])
+            .sorted { key($0.createdAt, $0.id) > key($1.createdAt, $1.id) }
+            .filter { m in before.map { key(m.createdAt, m.id) < key($0.createdAt, $0.id) } ?? true }
+            .prefix(max(1, min(limit, 50)))
+            .map { ChatMessage(id: $0.id, senderIsMe: $0.senderID == myID, body: $0.body, createdAt: $0.createdAt) }
     }
 
-    func sendConnectionAction(matchID: UUID, kind: ConnectionActionKind, detail: String?) async throws {
+    func sendMessage(matchID: UUID, clientMessageID: UUID, body: String) async throws -> SentMessageReceipt {
         try await pause()
-        var otherID: UUID?
-        var actionID = UUID()
-        try mutateMatch(matchID) { match in
-            guard match.connection.status != .expired, match.connection.status != .removed else { throw CrushlyError.requestExpired }
-            guard !match.actions.contains(where: { $0.kind == kind && $0.status == .pending }) else {
-                throw CrushlyError.invalidInput("You already sent that. Waiting for a reply.")
-            }
-            let action = ConnectionAction(id: UUID(), actorID: myID, kind: kind, detail: detail, status: .pending, createdAt: now())
-            actionID = action.id
-            match.actions.append(action)
-            touch(&match)
-            otherID = match.other
-        }
-        if let other = otherID, let delay = people[other]?.script.acceptsAfter {
-            schedule(at: now().addingTimeInterval(delay)) { [weak self] in
-                guard let self, var match = self.matchesByID[matchID],
-                      let index = match.actions.firstIndex(where: { $0.id == actionID && $0.status == .pending }) else { return }
-                match.actions[index].status = .accepted
-                self.matchesByID[matchID] = match
+        if simulateOfflineSends > 0 { simulateOfflineSends -= 1; throw URLError(.notConnectedToInternet) }
+        try requireSignedIn()
+        _ = try requireParticipant(matchID)
+        // Retry of a message that already landed: return it, never insert twice.
+        for (match, list) in messages {
+            if let existing = list.first(where: { $0.id == clientMessageID }) {
+                guard existing.senderID == myID, match == matchID else { throw CrushlyError.invalidInput("Please try again.") }
+                return SentMessageReceipt(id: existing.id, createdAt: existing.createdAt)
             }
         }
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= rules.messageMaxChars else { throw CrushlyError.invalidInput("Messages must be 1–\(rules.messageMaxChars) characters.") }
+        try enforceRateLimit("message", [(20, 60), (500, 86400)])
+        let message = DemoMessage(id: clientMessageID, senderID: myID, body: trimmed, createdAt: nextMessageTime(in: matchID))
+        appendMessage(message, to: matchID)
+        schedule(after: options.replyDelay) { [weak self] in self?.scriptedReply(in: matchID) }
+        if simulateLostResponses > 0 { simulateLostResponses -= 1; throw URLError(.timedOut) }
+        return SentMessageReceipt(id: message.id, createdAt: message.createdAt)
     }
 
-    func respondConnectionAction(actionID: UUID, accept: Bool) async throws {
+    func markConversationRead(matchID: UUID) async throws {
         try await pause()
-        guard let (id, _) = matchesByID.first(where: { $0.value.actions.contains { $0.id == actionID } }) else { throw CrushlyError.notFound }
-        try mutateMatch(id) { match in
-            guard let index = match.actions.firstIndex(where: { $0.id == actionID }), match.actions[index].actorID != myID,
-                  match.actions[index].status == .pending else { throw CrushlyError.notPermitted }
-            match.actions[index].status = accept ? .accepted : .declined
-            touch(&match)
-        }
+        try requireSignedIn()
+        _ = try requireParticipant(matchID)
+        matches[matchID]?.myLastReadAt = now()
     }
 
-    func instagramHandle(matchID: UUID) async throws -> String? {
+    func leaveConversation(matchID: UUID) async throws {
         try await pause()
-        guard let match = matchesByID[matchID], !isBlockedBetween(myID, match.other),
-              match.actions.contains(where: { $0.kind == .instagramExchange && $0.status == .accepted }) else { return nil }
-        return people[match.other]?.script.instagram
-    }
-
-    func requestFind(matchID: UUID, meetingPoint: String) async throws {
-        try await pause()
-        let date = now()
-        guard liveSession(of: myID, at: date) != nil else { throw CrushlyError.noLiveSession }
-        guard !isShielded(myID) else { throw CrushlyError.shielded }
-        var otherID: UUID?
-        var requestID = UUID()
-        try mutateMatch(matchID) { match in
-            guard liveSession(of: match.other, at: date) != nil, !isShielded(match.other) else { throw CrushlyError.notAvailable }
-            guard match.find.map({ $0.status != .pending && $0.status != .accepted }) ?? true else {
-                throw CrushlyError.invalidInput("There's already an open request.")
-            }
-            let request = FindRequest(id: UUID(), requesterID: myID, status: .pending, meetingPoint: meetingPoint,
-                                      respondBy: date.addingTimeInterval(Double(rules.findRequestTimeoutMinutes) * 60))
-            requestID = request.id
-            match.find = request
-            touch(&match)
-            otherID = match.other
-        }
-        if let other = otherID, let delay = people[other]?.script.acceptsAfter {
-            schedule(at: now().addingTimeInterval(delay)) { [weak self] in
-                guard let self, var match = self.matchesByID[matchID], var find = match.find, find.id == requestID,
-                      find.status == .pending, self.liveSession(of: other, at: self.now()) != nil,
-                      self.liveSession(of: self.myID, at: self.now()) != nil else { return }
-                find.status = .accepted
-                find.activeUntil = self.now().addingTimeInterval(Double(self.rules.findActiveMinutes) * 60)
-                match.find = find
-                match.connection.status = .metTonight
-                self.matchesByID[matchID] = match
-            }
-        }
-    }
-
-    func respondFind(requestID: UUID, accept: Bool) async throws {
-        try await pause()
-        guard let (id, _) = matchesByID.first(where: { $0.value.find?.id == requestID }) else { throw CrushlyError.notFound }
-        try mutateMatch(id) { match in
-            guard var find = match.find, find.requesterID != myID, find.status == .pending else { throw CrushlyError.notPermitted }
-            guard find.respondBy > now() else { throw CrushlyError.requestExpired }
-            find.status = accept ? .accepted : .declined
-            if accept { find.activeUntil = now().addingTimeInterval(Double(rules.findActiveMinutes) * 60) }
-            match.find = find
-            touch(&match)
-        }
-    }
-
-    func cancelFind(requestID: UUID) async throws {
-        try await pause()
-        guard let (id, _) = matchesByID.first(where: { $0.value.find?.id == requestID }) else { throw CrushlyError.notFound }
-        try mutateMatch(id) { match in
-            match.find?.status = .cancelled
-        }
-    }
-
-    func completeFind(requestID: UUID) async throws {
-        try await pause()
-        guard let (id, _) = matchesByID.first(where: { $0.value.find?.id == requestID }) else { throw CrushlyError.notFound }
-        try mutateMatch(id) { match in
-            guard match.find?.status == .accepted else { throw CrushlyError.notPermitted }
-            match.find?.status = .completed
-            match.connection.status = .metTonight
-            touch(&match)
-        }
+        try requireSignedIn()
+        guard matches[matchID] != nil else { throw CrushlyError.notFound }
+        deleteMatch(matchID)
     }
 
     // MARK: SafetyService
 
-    func enterShield(durationMinutes: Int?) async throws -> ShieldState {
-        try await pause()
-        let date = now()
-        let state = ShieldState(startedAt: date, activeUntil: durationMinutes.map { date.addingTimeInterval(Double($0) * 60) })
-        shield = state
-        session?.endedAt = date
-        session = nil
-        for (id, var match) in matchesByID where match.find?.status == .pending || match.find?.status == .accepted {
-            match.find?.status = .cancelled
-            matchesByID[id] = match
-        }
-        return state
-    }
-
-    func exitShield() async throws {
-        try await pause()
-        shield = nil
-        // Deliberately does not restart Pulse.
-    }
-
     func block(userID: UUID) async throws {
         try await pause()
-        blocks.insert(Pair(a: myID, b: userID))
-        blockedAt[userID] = now()
-        for index in signals.indices where signals[index].status == .pending
-            && Set([signals[index].sender, signals[index].recipient]) == Set([myID, userID]) {
-            signals[index].status = .withdrawn
-        }
-        for (id, var match) in matchesByID where match.other == userID {
-            if match.find?.status == .pending || match.find?.status == .accepted { match.find?.status = .cancelled }
-            matchesByID[id] = match
+        try requireSignedIn()
+        try blockNow(userID)
+    }
+
+    private func blockNow(_ target: UUID) throws {
+        guard target != myID else { throw CrushlyError.invalidInput("You can't do that.") }
+        guard people[target] != nil else { throw CrushlyError.notFound }
+        blocks.insert(UserPair(blocker: myID, blocked: target))
+        blockedAt[target] = now()
+        if let match = matchBetween(myID, target) { deleteMatch(match) }
+        if let mine = activeSession(of: myID)?.id, let theirs = activeSession(of: target)?.id {
+            interests.removeAll { ($0.sender == mine && $0.recipient == theirs) || ($0.sender == theirs && $0.recipient == mine) }
         }
     }
 
     func unblock(userID: UUID) async throws {
         try await pause()
-        blocks.remove(Pair(a: myID, b: userID))
+        blocks.remove(UserPair(blocker: myID, blocked: userID))
         blockedAt[userID] = nil
     }
 
     func blockedUsers() async throws -> [BlockedUser] {
         try await pause()
-        return blocks.filter { $0.a == myID }.compactMap { pair in
-            people[pair.b].map { BlockedUser(id: pair.b, firstName: $0.profile.firstName, blockedAt: blockedAt[pair.b] ?? now()) }
-        }
+        return blocks.filter { $0.blocker == myID }.compactMap { pair in
+            people[pair.blocked].map { BlockedUser(id: pair.blocked, firstName: $0.profile.firstName, blockedAt: blockedAt[pair.blocked] ?? now()) }
+        }.sorted { $0.blockedAt > $1.blockedAt }
     }
 
-    func report(userID: UUID, category: ReportCategory, details: String) async throws {
+    func report(userID: UUID, category: ReportCategory, details: String, evidenceMessageIDs: [UUID]) async throws {
         try await pause()
-        reports.append((userID, category, details))
-        try await block(userID: userID)
+        try requireSignedIn()
+        guard userID != myID, details.count <= 2000, evidenceMessageIDs.count <= 50 else { throw CrushlyError.invalidInput("Please check your report.") }
+        guard people[userID] != nil else { throw CrushlyError.notFound }
+        try enforceRateLimit("report", [(10, 86400)])
+        var evidence: [DemoMessage] = []
+        if !evidenceMessageIDs.isEmpty {
+            // Only messages from the conversation with this person, and only those the reporter selected.
+            let wanted = Set(evidenceMessageIDs)
+            guard let match = matchBetween(myID, userID) else { throw CrushlyError.invalidInput("Please check your report.") }
+            evidence = (messages[match] ?? []).filter { wanted.contains($0.id) }
+            guard evidence.count == wanted.count else { throw CrushlyError.invalidInput("Please check your report.") }
+        }
+        let trimmed = details.trimmingCharacters(in: .whitespacesAndNewlines)
+        submittedReports.append(DemoReport(target: userID, category: category, details: trimmed.isEmpty ? nil : trimmed, evidence: evidence))
+        try blockNow(userID)   // reporting also blocks and ends the conversation
     }
 
     // MARK: NotificationService / AnalyticsService
@@ -760,10 +770,21 @@ final class DemoBackend: CrushlyBackend {
     }
 
     func registerDevice(token: String, sandbox: Bool) async throws {}
+    func unregisterDevice(token: String) async throws {}
 
-    func track(_ event: AnalyticsEvent) async {
-        #if DEBUG
-        print("[demo analytics] \(event.rawValue)")
-        #endif
+    // MARK: RealtimeService
+
+    func startPokes(userID: UUID) async -> AsyncStream<RealtimePoke> {
+        pokeContinuation?.finish()
+        let (stream, continuation) = AsyncStream<RealtimePoke>.makeStream(bufferingPolicy: .bufferingNewest(16))
+        pokeContinuation = continuation
+        return stream
     }
+
+    func stopPokes() async {
+        pokeContinuation?.finish()
+        pokeContinuation = nil
+    }
+
+    func track(_ event: AnalyticsEvent) async {}
 }

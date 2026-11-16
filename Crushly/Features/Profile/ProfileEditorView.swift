@@ -8,7 +8,7 @@ struct ProfileEditorView: View {
     @Environment(AppState.self) private var state
     @Environment(\.dismiss) private var dismiss
     @State private var draft: Profile?
-    @State private var instagram = ""
+    @State private var preferences = MatchPreferences()
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var uploading = 0
     @State private var customInterest = ""
@@ -35,7 +35,7 @@ struct ProfileEditorView: View {
         .onAppear {
             guard draft == nil else { return }
             draft = state.profile ?? Profile(id: state.userID ?? UUID())
-            instagram = state.account.instagramHandle
+            preferences = state.preferences
         }
         .onChange(of: pickerItems) { _, items in
             guard !items.isEmpty else { return }
@@ -50,7 +50,7 @@ struct ProfileEditorView: View {
                 if mode == .onboarding {
                     VStack(alignment: .leading, spacing: Theme.Space.xs) {
                         Text("Make a first impression.").font(Theme.Typeface.title)
-                        Text("Only people active in the same Campus Space can see it.")
+                        Text("Only people open to matching in the same campus space can see it.")
                             .font(Theme.Typeface.callout).foregroundStyle(Theme.Palette.inkSoft)
                     }
                 }
@@ -61,12 +61,12 @@ struct ProfileEditorView: View {
                 vibes(draft)
                 prompt(draft)
                 intentions(draft)
-                instagramSection
+                matchingPreferences
 
-                if showMissing, !draft.wrappedValue.missingFields.isEmpty {
+                if showMissing, !(draft.wrappedValue.missingFields + preferences.missingFields).isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Still needed").font(Theme.Typeface.headline)
-                        ForEach(draft.wrappedValue.missingFields, id: \.self) { Text("• \($0)") }
+                        ForEach(draft.wrappedValue.missingFields + preferences.missingFields, id: \.self) { Text("• \($0)") }
                     }
                     .font(Theme.Typeface.callout)
                     .foregroundStyle(Theme.Palette.danger)
@@ -272,20 +272,63 @@ struct ProfileEditorView: View {
                     }
                 }
             }
-            Eyebrow(text: "Social availability")
+            Eyebrow(text: "Pace")
             AvailabilityPicker(selection: draft.availability)
         }
     }
 
-    private var instagramSection: some View {
+    /// Private. Enforced in both directions on the server; never shown to anyone.
+    private var matchingPreferences: some View {
         VStack(alignment: .leading, spacing: Theme.Space.m) {
-            Eyebrow(text: "Instagram · optional")
-            field("@handle", text: $instagram)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-            Label("Private. Only shared if you and a match both agree to swap.", systemImage: "lock.fill")
+            Eyebrow(text: "Matching preferences · private")
+            Text("Match me as").font(Theme.Typeface.callout.weight(.semibold))
+            FlowLayout(spacing: 8) {
+                ForEach(MatchGender.allCases) { option in
+                    SelectableChip(title: option.title, selected: preferences.matchGender == option) {
+                        preferences.matchGender = option
+                    }
+                    .accessibilityIdentifier("prefs.matchAs.\(option.rawValue)")
+                }
+            }
+            Text("Show me").font(Theme.Typeface.callout.weight(.semibold))
+            FlowLayout(spacing: 8) {
+                ForEach(MatchGender.allCases) { option in
+                    SelectableChip(title: option.plural, selected: preferences.showMe.contains(option)) {
+                        if preferences.showMe.contains(option) { preferences.showMe.remove(option) } else { preferences.showMe.insert(option) }
+                    }
+                    .accessibilityIdentifier("prefs.showMe.\(option.rawValue)")
+                }
+                SelectableChip(title: "Everyone", selected: preferences.showMe == Set(MatchGender.allCases)) {
+                    preferences.showMe = Set(MatchGender.allCases)
+                }
+                .accessibilityIdentifier("prefs.showMe.everyone")
+            }
+            ageStepper("Youngest", value: Binding(
+                get: { preferences.ageMin },
+                set: { preferences.ageMin = $0; preferences.ageMax = max(preferences.ageMax, $0) }),
+                range: MatchPreferences.ageFloor...MatchPreferences.ageCeilingShown)
+            ageStepper("Oldest", value: Binding(
+                get: { min(preferences.ageMax, MatchPreferences.ageCeilingShown) },
+                set: { preferences.ageMax = $0 >= MatchPreferences.ageCeilingShown ? MatchPreferences.ageCeilingStored : $0
+                       preferences.ageMin = min(preferences.ageMin, $0) }),
+                range: MatchPreferences.ageFloor...MatchPreferences.ageCeilingShown, plusAtTop: true)
+            Label("Both people have to fit each other's preferences to match.", systemImage: "lock.fill")
                 .font(Theme.Typeface.footnote).foregroundStyle(Theme.Palette.inkSoft)
         }
+    }
+
+    private func ageStepper(_ title: String, value: Binding<Int>, range: ClosedRange<Int>, plusAtTop: Bool = false) -> some View {
+        Stepper(value: value, in: range) {
+            HStack {
+                Text(title).font(Theme.Typeface.callout.weight(.semibold))
+                Spacer()
+                Text(plusAtTop && value.wrappedValue >= range.upperBound ? "\(range.upperBound)+" : "\(value.wrappedValue)")
+                    .font(Theme.Typeface.headline)
+            }
+        }
+        .padding(.horizontal, Theme.Space.l)
+        .frame(minHeight: 54)
+        .background(Theme.Palette.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.s))
     }
 
     // MARK: Helpers
@@ -357,26 +400,17 @@ struct ProfileEditorView: View {
 
     private func save(_ profile: Profile) async {
         showMissing = true
-        guard profile.isComplete else {
+        guard profile.isComplete, preferences.isComplete else {
             state.feedback.play(.warning)
             return
         }
         let ok = await state.perform {
-            try await state.saveProfile(profile)
-            if instagram != state.account.instagramHandle {
-                try await state.savePrivate(instagram: normalizedInstagram, verifiedOnly: state.account.verifiedOnlyDiscovery)
-            }
+            try await state.saveProfile(profile, preferences: preferences)
         }
         if ok {
             state.feedback.play(.success)
             if mode == .edit { dismiss() }
         }
-    }
-
-    private var normalizedInstagram: String {
-        let trimmed = instagram.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: " ", with: "")
-        guard !trimmed.isEmpty else { return "" }
-        return trimmed.hasPrefix("@") ? trimmed : "@" + trimmed
     }
 }
 
@@ -440,7 +474,7 @@ struct ReviewStatusPill: View {
         } else {
             switch status {
             case .pending:
-                StatusPill(text: "Photo review pending", systemImage: "hourglass", tint: Theme.Palette.amber, fill: Theme.Palette.amberSoft)
+                StatusPill(text: "Photo review pending", systemImage: "hourglass", tint: Theme.Palette.amberText, fill: Theme.Palette.amberSoft)
             case .approved:
                 StatusPill(text: "Photos approved", systemImage: "checkmark.seal.fill", tint: Theme.Palette.mint, fill: Theme.Palette.mintSoft)
             case .rejected:

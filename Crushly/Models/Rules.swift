@@ -1,19 +1,21 @@
 import Foundation
 
-/// Server-configurable rules (mirrors `app_settings`). Clients display these; only the server enforces them.
+/// Server-configurable rules (mirrors `app_settings`, BACKEND_CONTRACT §1). Clients display these and use them to
+/// avoid pointless requests; only the server enforces them.
 nonisolated struct AppRules: Codable, Equatable, Sendable {
     var allowedEmailDomains: [String] = ["usc.edu"]
-    var pulseDurationsMinutes: [Int] = [30, 60]
-    var signalsPerSession: Int = 5
-    var signalValidityHours: Int = 72
-    var encounterWindowHours: Int = 24
-    var connectionConfirmHours: Int = 24
-    var connectionInactiveDays: Int = 7
-    var findRequestTimeoutMinutes: Int = 10
-    var findActiveMinutes: Int = 30
-    /// nil entry = until turned off.
-    var shieldDurationsMinutes: [Int?] = [60, 240, 1440, nil]
-    var requireOwnPulseToViewAround: Bool = true
+    var participationLeaseSeconds: Int = 60
+    var evidenceMaxAccuracyMeters: Double = 30
+    var evidenceMaxFixAgeSeconds: Double = 15
+    var evidenceStationaryMaxFixAgeSeconds: Double = 300
+    /// Dev/staging only. Production must keep this false (see docs/PRE_LAUNCH_CHECKLIST.md).
+    var allowDraftSpaces: Bool = false
+    var discoveryMinParticipants: Int = 4
+    var discoveryMaxResults: Int = 8
+    var interestsPerSession: Int = 5
+    /// Offered pause lengths in minutes. "Until I turn it back on" is always offered as well.
+    var pauseDurationsMinutes: [Int] = [60, 240, 1440]
+    var messageMaxChars: Int = 2000
 
     static let `default` = AppRules()
 
@@ -21,6 +23,15 @@ nonisolated struct AppRules: Codable, Equatable, Sendable {
         let parts = email.lowercased().trimmingCharacters(in: .whitespaces).split(separator: "@")
         guard parts.count == 2, !parts[0].isEmpty else { return false }
         return allowedEmailDomains.contains(String(parts[1]))
+    }
+
+    /// The on-device membership thresholds that must agree with the server's evidence checks.
+    var membershipConfig: MembershipConfig {
+        var config = MembershipConfig.standard
+        config.maxAccuracy = evidenceMaxAccuracyMeters
+        config.maxEvidenceAge = evidenceMaxFixAgeSeconds
+        config.stationaryReuseMax = evidenceStationaryMaxFixAgeSeconds
+        return config
     }
 }
 
@@ -60,16 +71,6 @@ nonisolated enum ConversationStarters {
         "What song is on repeat for you right now?",
         "Settle this: Leavey or Doheny?",
         "What's something you're weirdly good at?"
-    ]
-}
-
-nonisolated enum MeetingPoints {
-    static let presets = [
-        "Tommy Trojan",
-        "USC Village fountain",
-        "Leavey Library entrance",
-        "Tutor Campus Center lobby",
-        "Doheny Library steps"
     ]
 }
 

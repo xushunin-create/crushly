@@ -3,16 +3,15 @@ import UIKit
 import UserNotifications
 
 /// Where a notification should take the user once the app is open and authenticated.
+/// Opening a notification only navigates; it never grants consent or changes visibility.
 nonisolated enum NotificationRoute: Equatable, Sendable {
-    case signals
-    case around
+    case connections
     case match(UUID)
 
-    /// Parses the `route` field sent by push-dispatch ("signals", "around", "match:<uuid>").
+    /// Parses the `route` field sent by push-dispatch ("connections", "match:<uuid>").
     init?(_ raw: String?) {
         guard let raw = raw?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else { return nil }
-        if raw == "signals" { self = .signals; return }
-        if raw == "around" { self = .around; return }
+        if raw == "connections" { self = .connections; return }
         if raw.hasPrefix("match:"), let id = UUID(uuidString: String(raw.dropFirst("match:".count))) {
             self = .match(id)
             return
@@ -21,7 +20,7 @@ nonisolated enum NotificationRoute: Equatable, Sendable {
     }
 }
 
-/// Owns notification permission, APNs registration and the local Pulse-expiry reminder.
+/// Owns notification permission and APNs registration.
 /// Remote delivery itself happens server-side (supabase/functions/push-dispatch).
 final class PushManager: NSObject {
     static let shared = PushManager()
@@ -35,7 +34,6 @@ final class PushManager: NSObject {
     var onRoute: ((NotificationRoute) -> Void)?
 
     private let center = UNUserNotificationCenter.current()
-    private let pulseReminderID = "crushly.pulse-expiring"
 
     func configure() {
         center.delegate = self
@@ -75,37 +73,13 @@ final class PushManager: NSObject {
         print("[push] remote registration unavailable: \(error.localizedDescription)")
         #endif
     }
-
-    // MARK: Local Pulse reminder
-
-    /// Schedules "Your Pulse ends in 5 minutes" on-device. Used when there is no remote push token,
-    /// so users aren't reminded twice once server push is live.
-    func schedulePulseReminder(expiresAt: Date, enabled: Bool) {
-        center.removePendingNotificationRequests(withIdentifiers: [pulseReminderID])
-        guard enabled, deviceToken == nil, permission == .allowed else { return }
-        let fireAt = expiresAt.addingTimeInterval(-5 * 60)
-        guard fireAt > Date() else { return }
-        let content = UNMutableNotificationContent()
-        content.title = "Crushly"
-        content.body = "Your Pulse ends in 5 minutes."
-        content.sound = .default
-        content.userInfo = ["route": "around"]
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: fireAt.timeIntervalSinceNow, repeats: false)
-        center.add(UNNotificationRequest(identifier: pulseReminderID, content: content, trigger: trigger))
-    }
-
-    func cancelPulseReminder() {
-        center.removePendingNotificationRequests(withIdentifiers: [pulseReminderID])
-    }
 }
 
 extension PushManager: UNUserNotificationCenterDelegate {
-    /// In the foreground the app's own UI (badges, reveal) already shows what changed, so system
-    /// banners are suppressed except for time-sensitive reminders.
+    /// In the foreground the app's own UI (badges, reveal) already shows what changed, so system banners are suppressed.
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification)
         async -> UNNotificationPresentationOptions {
-        let route = notification.request.content.userInfo["route"] as? String
-        return route == "around" ? [.banner, .sound] : []
+        []
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {

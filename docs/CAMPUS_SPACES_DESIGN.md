@@ -1,6 +1,6 @@
 # Campus Spaces & Private Matching: Design (Phase 1)
 
-Status: **draft for approval** (2026-11-16). Nothing in the app or database has changed yet.
+Status: **approved and implemented** (2026-11-16; Phases 2–6 done). Launch blockers: [PRE_LAUNCH_CHECKLIST.md](PRE_LAUNCH_CHECKLIST.md).
 This document replaces the Pulse / Around / Crossed Hearts / Find Each Other model described in
 `IMPLEMENTATION_PLAN.md` and `BACKEND_CONTRACT.md`. Those files will be updated in the phase that implements each part.
 

@@ -7,10 +7,10 @@ final class FeedbackService {
     enum Moment {
         /// Selection, tab change, toggle.
         case tap
-        /// Pulse Mode turned on.
-        case pulseOn
-        /// A Heart Signal left successfully: heartbeat + crisp signal + light haptics.
-        case signalSent
+        /// Opened to matching in a campus space.
+        case openToMatching
+        /// Interest sent: heartbeat + crisp signal + light haptics.
+        case interestSent
         /// Mutual match reveal: bell sequence + two heartbeat haptic pulses.
         case heartSync
         /// Something accepted / saved.
@@ -36,10 +36,10 @@ final class FeedbackService {
         switch moment {
         case .tap:
             impact(.light)
-        case .pulseOn:
+        case .openToMatching:
             impact(.medium)
             sound("signal", volume: 0.5)
-        case .signalSent:
+        case .interestSent:
             sound("heartbeat", volume: 0.9)
             impact(.light)
             after(0.38) {

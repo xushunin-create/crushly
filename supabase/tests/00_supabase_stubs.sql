@@ -47,3 +47,36 @@ begin
   return _parts[1:array_length(_parts, 1) - 1];
 end $$;
 grant execute on function storage.foldername(text) to anon, authenticated, service_role;
+
+-- Realtime (Broadcast authorization). Mirrors the parts of Supabase's `realtime` schema our migration uses:
+-- private-channel messages live in realtime.messages, RLS decides who may join/receive a topic, realtime.topic()
+-- is the topic being joined, and realtime.send() inserts a broadcast. Tests set the topic with
+-- set_config('realtime.topic', 'user:<uuid>', true) to impersonate a subscriber joining that channel.
+create schema if not exists realtime;
+grant usage on schema realtime to anon, authenticated, service_role;
+
+create table realtime.messages (
+  id          bigserial primary key,
+  topic       text not null,
+  extension   text not null,
+  payload     jsonb,
+  event       text,
+  private     boolean default false,
+  inserted_at timestamptz not null default now()
+);
+alter table realtime.messages enable row level security;
+grant select, insert on realtime.messages to authenticated;
+grant all on realtime.messages to service_role;
+grant usage on sequence realtime.messages_id_seq to authenticated, service_role;
+
+create function realtime.topic() returns text language sql stable as $$
+  select nullif(current_setting('realtime.topic', true), '')
+$$;
+grant execute on function realtime.topic() to anon, authenticated, service_role;
+
+create function realtime.send(payload jsonb, event text, topic text, private boolean default true) returns void
+language plpgsql security definer as $$
+begin
+  insert into realtime.messages (topic, extension, payload, event, private)
+  values (send.topic, 'broadcast', send.payload, send.event, send.private);
+end $$;

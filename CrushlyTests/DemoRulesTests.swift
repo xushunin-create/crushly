@@ -2,176 +2,233 @@ import Foundation
 import Testing
 @testable import Crushly
 
-/// The demo backend must enforce the same rules as the SQL functions (BACKEND_CONTRACT §3–4),
-/// otherwise demo walkthroughs would promise behaviour the server doesn't have.
+/// The demo fixture must enforce the same rules as the SQL functions (BACKEND_CONTRACT §3–4), otherwise demo
+/// walkthroughs would promise behaviour the server doesn't have. Each test names the SQL rule it mirrors.
 @MainActor
 struct DemoRulesTests {
-    private let village = DemoWorld.village
+    private let quad = DemoWorld.mcCarthyQuad
+
     private func person(_ name: String) -> UUID {
         DemoWorld.people().first { $0.profile.firstName == name }!.profile.id
     }
 
-    private func liveBackend() async throws -> DemoBackend {
-        let demo = DemoBackend(options: .init(seededAccount: true, receiptDelay: 0, latency: .zero))
-        _ = try await demo.startPulse(spaceID: village, durationMinutes: 30, untilEventEnd: false, availability: .either)
-        return demo
+    private func open(_ demo: DemoBackend, _ slug: String = DemoWorld.mcCarthyQuad) async throws -> ParticipationLease {
+        let epoch = try await demo.myParticipation().consentEpoch
+        return try await demo.openParticipation(spaceSlug: slug, boundaryVersion: 1, consentEpoch: epoch,
+                                                clientRequestID: UUID(), evidence: TestWorld.evidence())
     }
 
-    // MARK: Visibility
-
-    @Test func aroundRequiresYourOwnLivePulse() async {
-        let demo = DemoBackend(options: .init(seededAccount: true, receiptDelay: 0, latency: .zero))
-        await #expect(throws: CrushlyError.noLiveSession) { try await demo.aroundProfiles() }
+    private func names(_ result: DiscoveryResult) -> Set<String> {
+        guard case .candidates(let list) = result else { return [] }
+        return Set(list.map(\.firstName))
     }
 
-    @Test func aroundShowsOnlyEligiblePeopleInYourSpace() async throws {
-        let demo = try await liveBackend()
-        let names = Set(try await demo.aroundProfiles().map(\.firstName))
-        #expect(names.isSuperset(of: ["Mina", "Alex", "Jamie", "Noah", "Priya", "Marcus", "Elena"]))
-        #expect(!names.contains("Taylor"), "paused users are hidden")
-        #expect(!names.contains("Jordan"), "shielded users are hidden")
-        #expect(!names.contains("Sam"), "verified-only users are hidden from unapproved viewers")
-        #expect(!names.contains("Rio"), "other spaces are not visible")
-        #expect(!names.contains("Devon"))
+    // MARK: Participation (open/renew/revoke)
+
+    @Test func openRequiresPlausibleFreshEvidence() async throws {
+        let demo = TestWorld.demo()
+        let epoch = try await demo.myParticipation().consentEpoch
+        func attempt(_ e: LocationEvidence) async throws {
+            _ = try await demo.openParticipation(spaceSlug: quad, boundaryVersion: 1, consentEpoch: epoch, clientRequestID: UUID(), evidence: e)
+        }
+        await #expect(throws: CrushlyError.insufficientAccuracy) { try await attempt(TestWorld.evidence(accuracy: 31)) }
+        await #expect(throws: CrushlyError.staleEvidence) { try await attempt(TestWorld.evidence(age: 16)) }
+        await #expect(throws: CrushlyError.staleEvidence, "entry needs a moving fix, not a re-cited one") {
+            try await attempt(TestWorld.evidence(stationary: true))
+        }
+        try await attempt(TestWorld.evidence())
+    }
+
+    @Test func openChecksSpaceBoundaryAndEpoch() async throws {
+        let demo = TestWorld.demo()
+        let epoch = try await demo.myParticipation().consentEpoch
+        await #expect(throws: CrushlyError.spaceUnavailable) {
+            try await demo.openParticipation(spaceSlug: "usc-village-piazza", boundaryVersion: 1, consentEpoch: epoch,
+                                             clientRequestID: UUID(), evidence: TestWorld.evidence())
+        }
+        await #expect(throws: CrushlyError.boundaryOutdated) {
+            try await demo.openParticipation(spaceSlug: quad, boundaryVersion: 2, consentEpoch: epoch,
+                                             clientRequestID: UUID(), evidence: TestWorld.evidence())
+        }
+        await #expect(throws: CrushlyError.consentStale, "a delayed 'open' from before a revoke is rejected") {
+            _ = try await demo.revokeParticipation()
+            _ = try await demo.openParticipation(spaceSlug: quad, boundaryVersion: 1, consentEpoch: epoch,
+                                                 clientRequestID: UUID(), evidence: TestWorld.evidence())
+        }
+    }
+
+    @Test func openIsIdempotentOnTheRequestID() async throws {
+        let demo = TestWorld.demo()
+        let epoch = try await demo.myParticipation().consentEpoch
+        let request = UUID()
+        let a = try await demo.openParticipation(spaceSlug: quad, boundaryVersion: 1, consentEpoch: epoch, clientRequestID: request, evidence: TestWorld.evidence())
+        let b = try await demo.openParticipation(spaceSlug: quad, boundaryVersion: 1, consentEpoch: epoch, clientRequestID: request, evidence: TestWorld.evidence())
+        #expect(a.sessionID == b.sessionID)
+    }
+
+    @Test func renewRules() async throws {
+        let demo = TestWorld.demo()
+        let lease = try await open(demo)
+        let fix = TestWorld.evidence(1)
+        _ = try await demo.renewParticipation(sessionID: lease.sessionID, seq: 1, evidence: fix)
+        await #expect(throws: CrushlyError.staleRequest) {
+            try await demo.renewParticipation(sessionID: lease.sessionID, seq: 1, evidence: TestWorld.evidence(2))
+        }
+        await #expect(throws: CrushlyError.staleEvidence, "a heartbeat citing no newer fix is not evidence") {
+            try await demo.renewParticipation(sessionID: lease.sessionID, seq: 2, evidence: fix)
+        }
+        // While stationary, the last fix may be re-cited (up to 5 min old).
+        let stationary = LocationEvidence(fixTimestamp: fix.fixTimestamp, fixAge: 120, horizontalAccuracy: 10, stationary: true)
+        _ = try await demo.renewParticipation(sessionID: lease.sessionID, seq: 3, evidence: stationary)
+
+        demo.skipAhead(minutes: 2)
+        await #expect(throws: CrushlyError.sessionExpired, "an expired lease can never be revived") {
+            try await demo.renewParticipation(sessionID: lease.sessionID, seq: 4, evidence: TestWorld.evidence(3))
+        }
+    }
+
+    @Test func pauseRejectsOpenAndResumeOpensNothing() async throws {
+        let demo = TestWorld.demo()
+        _ = try await open(demo)
+        await #expect(throws: CrushlyError.invalidDuration) { try await demo.setMatchingPaused(true, minutes: 7) }
+        let paused = try await demo.setMatchingPaused(true, minutes: 60)
+        #expect(paused.matchingPaused && paused.session == nil)
+        await #expect(throws: CrushlyError.matchingPaused) { try await open(demo) }
+        let resumed = try await demo.setMatchingPaused(false, minutes: nil)
+        #expect(!resumed.matchingPaused && resumed.session == nil)
+
+        _ = try await demo.setMatchingPaused(true, minutes: 60)
+        demo.skipAhead(minutes: 61)
+        #expect(try await demo.myParticipation().matchingPaused == false, "timed pauses end on their own")
+    }
+
+    // MARK: Discovery
+
+    @Test func discoveryRequiresYourOwnSession() async {
+        let demo = TestWorld.demo()
+        await #expect(throws: CrushlyError.notParticipating) { try await demo.discoverCandidates() }
+    }
+
+    @Test func quietSpacesReturnNoCount() async throws {
+        let demo = TestWorld.demo()
+        _ = try await open(demo, DemoWorld.greatLawn)
+        #expect(try await demo.discoverCandidates() == .quiet)
+    }
+
+    @Test func eligibilityAppliesBothWays() async throws {
+        let demo = TestWorld.demo()
+        _ = try await open(demo)
+        let visible = names(try await demo.discoverCandidates())
+        #expect(visible == ["Mina", "Alex", "Jamie", "Noah", "Priya", "Marcus", "Elena"])
+        #expect(!visible.contains("Taylor"), "paused: no session")
+        #expect(!visible.contains("Jordan"), "their 'show me' excludes you")
+        #expect(!visible.contains("Sam"), "verified-only users are hidden from unapproved viewers")
+        #expect(!visible.contains("Rio") && !visible.contains("Devon"), "other spaces are never visible")
+
+        let park = TestWorld.demo()
+        _ = try await open(park, DemoWorld.alumniPark)
+        #expect(names(try await park.discoverCandidates()) == ["Devon", "Kai"], "Lena's age range excludes you")
     }
 
     @Test func verifiedOnlyUserAppearsAfterApproval() async throws {
-        let demo = try await liveBackend()
+        let demo = TestWorld.demo()
         demo.simulatePhotoReview(.approved)
-        #expect(try await demo.aroundProfiles().contains { $0.firstName == "Sam" })
+        _ = try await open(demo)
+        #expect(names(try await demo.discoverCandidates()).contains("Sam"))
     }
 
-    @Test func pauseHidesAndExpiryBlocksResume() async throws {
-        let demo = try await liveBackend()
-        _ = try await demo.pausePulse()
-        await #expect(throws: CrushlyError.noLiveSession) { try await demo.aroundProfiles() }
-        _ = try await demo.resumePulse()
-        #expect(try await !demo.aroundProfiles().isEmpty)
-
-        _ = try await demo.pausePulse()
-        demo.skipAhead(minutes: 31)
-        await #expect(throws: CrushlyError.sessionExpired) { try await demo.resumePulse() }
-        let account = try await demo.loadAccount()
-        #expect(account.pulse == nil, "expired sessions are not returned as live")
+    @Test func discoveryIsRateLimited() async throws {
+        let demo = TestWorld.demo(rateLimits: true)
+        _ = try await open(demo)
+        _ = try await demo.discoverCandidates()
+        await #expect(throws: CrushlyError.rateLimited) { try await demo.discoverCandidates() }
     }
 
-    @Test func durationsAreValidated() async throws {
-        let demo = DemoBackend(options: .init(seededAccount: true, receiptDelay: 0, latency: .zero))
-        await #expect(throws: CrushlyError.invalidDuration) {
-            try await demo.startPulse(spaceID: village, durationMinutes: 45, untilEventEnd: false, availability: .either)
+    // MARK: Interest and matching
+
+    @Test func interestOnlyTowardSomeoneYouWereShown() async throws {
+        let demo = TestWorld.demo()
+        _ = try await open(demo)
+        await #expect(throws: CrushlyError.notAvailable, "a known user id can't be probed") {
+            try await demo.expressInterest(in: person("Noah"))
         }
-        await #expect(throws: CrushlyError.invalidDuration) {
-            try await demo.startPulse(spaceID: village, durationMinutes: nil, untilEventEnd: true, availability: .either)
+        _ = try await demo.discoverCandidates()
+        #expect(try await demo.expressInterest(in: person("Noah")) == .sent(remaining: 4))
+        await #expect(throws: CrushlyError.alreadySent) { try await demo.expressInterest(in: person("Noah")) }
+        await #expect(throws: CrushlyError.notAvailable) { try await demo.expressInterest(in: person("Jordan")) }
+        await #expect(throws: CrushlyError.invalidInput("You can't do that.")) { try await demo.expressInterest(in: demo.myID) }
+    }
+
+    @Test func fiveInterestsPerVisit() async throws {
+        let demo = TestWorld.demo()
+        _ = try await open(demo)
+        _ = try await demo.discoverCandidates()
+        for name in ["Noah", "Priya", "Marcus", "Elena", "Jamie"] { _ = try await demo.expressInterest(in: person(name)) }
+        await #expect(throws: CrushlyError.limitReached) { try await demo.expressInterest(in: person("Alex")) }
+    }
+
+    @Test func reciprocalInterestMatchesExactlyOnce() async throws {
+        let demo = TestWorld.demo()
+        _ = try await open(demo)
+        _ = try await demo.discoverCandidates()
+        #expect(try await demo.interestReceipts() == 1, "Mina, anonymously")
+        guard case .matched(let id, _) = try await demo.expressInterest(in: person("Mina")) else {
+            Issue.record("expected a match"); return
         }
-        let session = try await demo.startPulse(spaceID: DemoWorld.hackathon, durationMinutes: nil, untilEventEnd: true, availability: .meetNow)
-        let space = try await demo.spaces().first { $0.id == DemoWorld.hackathon }
-        #expect(session.expiresAt == space?.endsAt)
+        #expect(try await demo.conversations().map(\.id) == [id])
+        #expect(try await demo.interestReceipts() == 0, "the interest is consumed by the match")
+        await #expect(throws: CrushlyError.alreadyMatched) { try await demo.expressInterest(in: person("Mina")) }
     }
 
-    // MARK: Signals
+    @Test func delayedReciprocationWhileBothAreStillHere() async throws {
+        let demo = TestWorld.demo()
+        let lease = try await open(demo)
+        _ = try await demo.discoverCandidates()
+        _ = try await demo.expressInterest(in: person("Alex"))
+        #expect(try await demo.conversations().isEmpty)
+        demo.skipAhead(minutes: 0.4)    // Alex answers after 20 s; the 60 s lease is still valid
+        _ = try await demo.renewParticipation(sessionID: lease.sessionID, seq: 1, evidence: TestWorld.evidence(1))
+        #expect(try await demo.conversations().map(\.other.firstName) == ["Alex"])
+    }
 
-    @Test func signalLimitDuplicatesAndSelf() async throws {
-        let demo = try await liveBackend()
-        _ = try await demo.aroundProfiles()
-        await #expect(throws: CrushlyError.selfSignal) {
-            try await demo.sendHeartSignal(to: UUID(uuidString: "00000000-0000-0000-0000-0000000000AA")!)
+    @Test func endingASessionDeletesItsInterests() async throws {
+        let demo = TestWorld.demo()
+        _ = try await open(demo)
+        _ = try await demo.discoverCandidates()
+        _ = try await demo.expressInterest(in: person("Noah"))
+        #expect(try await demo.sentInterests() == [person("Noah")])
+        _ = try await demo.revokeParticipation()
+        _ = try await open(demo)
+        #expect(try await demo.sentInterests().isEmpty, "interests never outlive the visit")
+    }
+
+    @Test func someoneLeavingDeletesTheirInterest() async throws {
+        let demo = TestWorld.demo()
+        let lease = try await open(demo)
+        demo.skipAhead(minutes: 0.25)                     // Jamie becomes interested at 10 s
+        #expect(try await demo.interestReceipts() == 2, "Mina and Jamie")
+        var seq: Int64 = 0
+        for _ in 0..<5 {                                   // stay ~3.75 min, renewing within each 60 s lease
+            demo.skipAhead(minutes: 0.7)
+            seq += 1
+            _ = try await demo.renewParticipation(sessionID: lease.sessionID, seq: seq, evidence: TestWorld.evidence(Double(seq)))
         }
-
-        let first = try await demo.sendHeartSignal(to: person("Noah"))
-        #expect(first == .sent(remaining: 4))
-        await #expect(throws: CrushlyError.alreadySignaled) { try await demo.sendHeartSignal(to: person("Noah")) }
-
-        for name in ["Priya", "Marcus", "Elena", "Jamie"] { _ = try await demo.sendHeartSignal(to: person(name)) }
-        await #expect(throws: CrushlyError.limitReached) { try await demo.sendHeartSignal(to: person("Alex")) }
-    }
-
-    @Test func cannotSignalSomeoneYouCannotSee() async throws {
-        let demo = try await liveBackend()
-        await #expect(throws: CrushlyError.notAvailable) { try await demo.sendHeartSignal(to: person("Rio")) }
-        await #expect(throws: CrushlyError.notAvailable) { try await demo.sendHeartSignal(to: person("Jordan")) }
-    }
-
-    @Test func receiptsAreAnonymousAndCoarse() async throws {
-        let demo = try await liveBackend()
-        let receipts = try await demo.receipts()
-        #expect(receipts.count == 1, "Mina's scripted signal")
-        let receipt = try #require(receipts.first)
-        let seconds = receipt.receivedBucket.timeIntervalSince1970
-        #expect(seconds.truncatingRemainder(dividingBy: 900) == 0, "time is rounded to 15-minute buckets")
-        // SignalReceipt has no sender field by construction; make sure nothing else leaks it either.
-        let mirror = Mirror(reflecting: receipt).children.compactMap(\.label)
-        #expect(Set(mirror) == ["id", "receivedBucket", "spaceName"])
-    }
-
-    // MARK: Matching
-
-    @Test func reciprocalSignalCreatesExactlyOneHeartSync() async throws {
-        let demo = try await liveBackend()
-        _ = try await demo.aroundProfiles()
-        let result = try await demo.sendHeartSignal(to: person("Mina"))
-        guard case .matched = result else { Issue.record("expected a match, got \(result)"); return }
-        let matches = try await demo.matches()
-        #expect(matches.count == 1)
-        #expect(matches.first?.kind == .heartSync)
-        #expect(matches.first?.connection.status == .pendingConfirmation)
-        #expect(try await demo.receipts().isEmpty, "a matched receipt no longer shows as anonymous")
-        await #expect(throws: CrushlyError.alreadyMatched) { try await demo.sendHeartSignal(to: person("Mina")) }
-    }
-
-    @Test func delayedReplyBecomesAHeartSync() async throws {
-        let demo = try await liveBackend()
-        _ = try await demo.aroundProfiles()
-        #expect(try await demo.sendHeartSignal(to: person("Alex")) == .sent(remaining: 4))
-        #expect(try await demo.matches().isEmpty)
-        demo.skipAhead(minutes: 1)
-        let matches = try await demo.matches()
-        #expect(matches.map(\.other.firstName) == ["Alex"])
-        #expect(matches.first?.kind == .heartSync)
-    }
-
-    @Test func signallingAfterTheyLeftIsCrossedHearts() async throws {
-        let demo = try await liveBackend()
-        _ = try await demo.aroundProfiles()          // records the encounter with Jamie
-        demo.skipAhead(minutes: 4)                   // Jamie signals at 30 s, leaves at 3 min
-        #expect(try await !demo.aroundProfiles().contains { $0.firstName == "Jamie" })
-        #expect(try await demo.recentEncounters().contains { $0.firstName == "Jamie" })
-        let result = try await demo.sendHeartSignal(to: person("Jamie"))
-        guard case .matched = result else { Issue.record("expected a match, got \(result)"); return }
-        #expect(try await demo.matches().first?.kind == .crossedHearts)
-    }
-
-    @Test func connectionsExpireWithoutConfirmation() async throws {
-        let demo = try await liveBackend()
-        _ = try await demo.aroundProfiles()
-        _ = try await demo.sendHeartSignal(to: person("Mina"))
-        demo.skipAhead(minutes: 25 * 60)
-        #expect(try await demo.matches().first?.connection.status == .expired)
+        #expect(try await demo.interestReceipts() == 1, "Jamie left; their interest cascaded away")
     }
 
     // MARK: Safety
 
-    @Test func blockingHidesInBothDirectionsAndWithdrawsSignals() async throws {
-        let demo = try await liveBackend()
-        #expect(try await demo.receipts().count == 1)
+    @Test func blockingEndsTheMatchAndInterestsAndUnblockRestoresNothing() async throws {
+        let demo = TestWorld.demo()
+        _ = try await open(demo)
+        _ = try await demo.discoverCandidates()
+        _ = try await demo.expressInterest(in: person("Mina"))
+        let match = try #require(try await demo.conversations().first)
         try await demo.block(userID: person("Mina"))
-        #expect(try await !demo.aroundProfiles().contains { $0.firstName == "Mina" })
-        #expect(try await demo.receipts().isEmpty)
-        await #expect(throws: CrushlyError.notAvailable) { try await demo.sendHeartSignal(to: person("Mina")) }
+        #expect(try await demo.conversations().isEmpty)
+        #expect(demo.deletedMatchIDs.contains(match.id))
+        #expect(!names(try await demo.discoverCandidates()).contains("Mina"))
         try await demo.unblock(userID: person("Mina"))
-        #expect(try await demo.aroundProfiles().contains { $0.firstName == "Mina" })
-        #expect(try await demo.receipts().isEmpty, "withdrawn signals don't come back after unblocking")
-    }
-
-    @Test func shieldEndsSessionAndExitDoesNotRestartIt() async throws {
-        let demo = try await liveBackend()
-        _ = try await demo.enterShield(durationMinutes: 60)
-        #expect(try await demo.loadAccount().pulse == nil)
-        await #expect(throws: CrushlyError.shielded) {
-            try await demo.startPulse(spaceID: village, durationMinutes: 30, untilEventEnd: false, availability: .either)
-        }
-        try await demo.exitShield()
-        let account = try await demo.loadAccount()
-        #expect(account.shield == nil)
-        #expect(account.pulse == nil, "leaving Shield never makes you visible again on its own")
+        #expect(try await demo.conversations().isEmpty)
     }
 }

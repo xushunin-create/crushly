@@ -4,9 +4,10 @@ import Supabase
 /// Live backend. Every sensitive rule is enforced by the SQL functions in supabase/migrations;
 /// this type only translates between RPC payloads and domain models. Uses only the anon key.
 final class SupabaseBackend: CrushlyBackend {
-    private let client: SupabaseClient
+    let client: SupabaseClient
     private let photoBucket = "profile-photos"
     private var signedURLCache: [String: (url: URL, expires: Date)] = [:]
+    private var pokeChannel: RealtimeChannelV2?
 
     init(url: URL, anonKey: String) {
         client = SupabaseClient(
@@ -97,6 +98,7 @@ final class SupabaseBackend: CrushlyBackend {
     #endif
 
     func signOut() async throws {
+        await stopPokes()
         try await client.auth.signOut(scope: .local)
     }
 
@@ -115,9 +117,8 @@ final class SupabaseBackend: CrushlyBackend {
             userID: id,
             email: client.auth.currentUser?.email ?? "",
             profile: state.profile?.domain,
-            account: state.privateAccount?.domain ?? PrivateAccount(),
-            pulse: state.pulse?.domain,
-            shield: state.shield?.domain,
+            account: state.privateAccount?.account ?? PrivateAccount(),
+            preferences: state.privateAccount?.preferences ?? MatchPreferences(),
             prefs: state.prefs?.domain ?? NotificationPrefs(),
             rules: state.settings?.domain ?? .default,
             serverNow: state.serverNow ?? Date()
@@ -130,16 +131,27 @@ final class SupabaseBackend: CrushlyBackend {
         return saved.domain
     }
 
-    func savePrivate(instagramHandle: String, verifiedOnlyDiscovery: Bool) async throws {
-        nonisolated struct Row: Encodable { let user_id: UUID; let instagram_handle: String; let verified_only_discovery: Bool }
+    func saveVerifiedOnlyDiscovery(_ enabled: Bool) async throws {
+        // Column-level grant: authenticated may update only verified_only_discovery on its own row (RLS).
+        nonisolated struct Row: Encodable { let verified_only_discovery: Bool }
         do {
             try await client.from("profile_private")
-                .update(Row(user_id: try uid, instagram_handle: instagramHandle, verified_only_discovery: verifiedOnlyDiscovery))
+                .update(Row(verified_only_discovery: enabled))
                 .eq("user_id", value: try uid)
                 .execute()
         } catch {
             throw map(error)
         }
+    }
+
+    func updateMatchPreferences(_ preferences: MatchPreferences) async throws {
+        nonisolated struct Params: Encodable {
+            let p_match_gender: String?; let p_show_me: [String]; let p_age_min: Int; let p_age_max: Int
+        }
+        try await callVoid("update_match_preferences", Params(
+            p_match_gender: preferences.matchGender?.rawValue,
+            p_show_me: preferences.showMe.sorted().map(\.rawValue),
+            p_age_min: preferences.ageMin, p_age_max: preferences.ageMax))
     }
 
     func acceptTerms(termsVersion: String, privacyVersion: String, ageConfirmed: Bool) async throws {
@@ -172,135 +184,113 @@ final class SupabaseBackend: CrushlyBackend {
 
     // MARK: SpaceService
 
-    func spaces() async throws -> [CampusSpace] {
+    func zones() async throws -> [SpaceZone] {
         do {
-            let rows: [SpaceDTO] = try await client.from("campus_spaces")
-                .select().eq("is_active", value: true).order("sort_order").execute().value
-            return rows.map(\.domain)
+            // RLS returns only enabled spaces that are field-validated (or drafts when allow_draft_spaces is on).
+            let rows: [SpaceZone] = try await client.from("campus_spaces")
+                .select("slug,name,subtitle,boundary,boundary_version,validation_status,enabled,sort_order")
+                .order("sort_order").execute().value
+            return rows.sorted { ($0.sortOrder, $0.slug) < ($1.sortOrder, $1.slug) }
         } catch {
             throw map(error)
         }
     }
 
-    func enterSpaceCode(_ code: String) async throws -> CampusSpace {
-        nonisolated struct Params: Encodable { let code: String }
-        let space: SpaceDTO = try await call("enter_space_code", Params(code: code))
-        return space.domain
+    // MARK: ParticipationService
+
+    func myParticipation() async throws -> ParticipationStatus {
+        let dto: ParticipationDTO = try await call("my_participation")
+        return dto.domain
     }
 
-    // MARK: PulseService
-
-    func startPulse(spaceID: UUID, durationMinutes: Int?, untilEventEnd: Bool, availability: Availability) async throws -> PulseSession {
-        nonisolated struct Params: Encodable { let space_id: UUID; let duration_minutes: Int?; let until_event_end: Bool; let availability: Availability }
-        let session: SessionDTO = try await call("start_pulse", Params(space_id: spaceID, duration_minutes: durationMinutes,
-                                                                        until_event_end: untilEventEnd, availability: availability))
-        return session.domain
-    }
-
-    func pausePulse() async throws -> PulseSession {
-        let session: SessionDTO = try await call("pause_pulse")
-        return session.domain
-    }
-
-    func resumePulse() async throws -> PulseSession {
-        let session: SessionDTO = try await call("resume_pulse")
-        return session.domain
-    }
-
-    func endPulse() async throws { try await callVoid("end_pulse") }
-
-    func aroundProfiles() async throws -> [PublicProfile] {
-        let rows: [PublicProfileDTO] = try await call("around_profiles")
-        return rows.map(\.domain)
-    }
-
-    func recentEncounters() async throws -> [PublicProfile] {
-        let rows: [PublicProfileDTO] = try await call("recent_encounters")
-        return rows.map(\.domain)
-    }
-
-    // MARK: SignalService
-
-    func sendHeartSignal(to recipient: UUID) async throws -> SendSignalResult {
-        nonisolated struct Params: Encodable { let recipient: UUID }
-        nonisolated struct Result: Decodable { let result: String; let match_id: UUID?; let remaining: Int }
-        let result: Result = try await call("send_heart_signal", Params(recipient: recipient))
-        if result.result == "matched", let id = result.match_id {
-            return .matched(matchID: id, remaining: result.remaining)
+    func openParticipation(spaceSlug: String, boundaryVersion: Int, consentEpoch: Int64, clientRequestID: UUID,
+                           evidence: LocationEvidence) async throws -> ParticipationLease {
+        nonisolated struct Params: Encodable {
+            let p_space_slug: String; let p_boundary_version: Int; let p_consent_epoch: Int64
+            let p_client_request_id: UUID; let p_evidence: EvidenceDTO
         }
-        return .sent(remaining: result.remaining)
+        let dto: LeaseDTO = try await call("open_participation", Params(
+            p_space_slug: spaceSlug, p_boundary_version: boundaryVersion, p_consent_epoch: consentEpoch,
+            p_client_request_id: clientRequestID, p_evidence: EvidenceDTO(evidence)))
+        return dto.domain
     }
 
-    func receipts() async throws -> [SignalReceipt] {
-        let rows: [ReceiptDTO] = try await call("my_signal_receipts")
-        return rows.map { SignalReceipt(id: $0.id, receivedBucket: $0.received_bucket, spaceName: $0.space_name) }
+    func renewParticipation(sessionID: UUID, seq: Int64, evidence: LocationEvidence) async throws -> ParticipationLease {
+        nonisolated struct Params: Encodable { let p_session_id: UUID; let p_seq: Int64; let p_evidence: EvidenceDTO }
+        let dto: LeaseDTO = try await call("renew_participation",
+                                           Params(p_session_id: sessionID, p_seq: seq, p_evidence: EvidenceDTO(evidence)))
+        return dto.domain
     }
 
-    func sentSignals() async throws -> [SentSignal] {
-        let rows: [SentSignalDTO] = try await call("my_sent_signals")
-        return rows.map {
-            SentSignal(id: $0.id, recipient: $0.recipient.domain, createdAt: $0.created_at, expiresAt: $0.expires_at, status: $0.status)
-        }
+    @discardableResult
+    func revokeParticipation() async throws -> Int64 {
+        try await call("revoke_participation")
     }
 
-    // MARK: MatchService
+    func setMatchingPaused(_ paused: Bool, minutes: Int?) async throws -> ParticipationStatus {
+        nonisolated struct Params: Encodable { let p_paused: Bool; let p_minutes: Int? }
+        let dto: ParticipationDTO = try await call("set_matching_paused", Params(p_paused: paused, p_minutes: minutes))
+        return dto.domain
+    }
 
-    func matches() async throws -> [Match] {
-        let rows: [MatchDTO] = try await call("my_matches")
+    // MARK: DiscoveryService
+
+    func discoverCandidates() async throws -> DiscoveryResult {
+        let dto: DiscoveryDTO = try await call("discover_candidates")
+        return dto.domain
+    }
+
+    func expressInterest(in target: UUID) async throws -> InterestResult {
+        nonisolated struct Params: Encodable { let p_target: UUID }
+        let dto: InterestDTO = try await call("express_interest", Params(p_target: target))
+        return dto.domain
+    }
+
+    func interestReceipts() async throws -> Int {
+        try await call("my_interest_receipts")
+    }
+
+    func sentInterests() async throws -> Set<UUID> {
+        let ids: [UUID] = try await call("my_sent_interests")
+        return Set(ids)
+    }
+
+    // MARK: ConversationService
+
+    func conversations() async throws -> [Conversation] {
+        let rows: [ConversationDTO] = try await call("my_conversations")
         return rows.map(\.domain)
     }
 
-    func setConnectionStatus(matchID: UUID, status: ConnectionStatus) async throws {
-        nonisolated struct Params: Encodable { let match_id: UUID; let status: ConnectionStatus }
-        try await callVoid("set_connection_status", Params(match_id: matchID, status: status))
+    func fetchMessages(matchID: UUID, before: MessageCursor?, limit: Int) async throws -> [ChatMessage] {
+        nonisolated struct Params: Encodable {
+            let p_match_id: UUID; let p_before_created_at: String?; let p_before_id: UUID?; let p_limit: Int
+        }
+        let rows: [MessageDTO] = try await call("fetch_messages", Params(
+            p_match_id: matchID, p_before_created_at: before.map { PreciseTimestamp.format($0.createdAt) },
+            p_before_id: before?.id, p_limit: limit))
+        return rows.map(\.domain)
     }
 
-    func sendConnectionAction(matchID: UUID, kind: ConnectionActionKind, detail: String?) async throws {
-        nonisolated struct Payload: Encodable { let detail: String? }
-        nonisolated struct Params: Encodable { let match_id: UUID; let kind: ConnectionActionKind; let payload: Payload }
-        try await callVoid("send_connection_action", Params(match_id: matchID, kind: kind, payload: Payload(detail: detail)))
+    func sendMessage(matchID: UUID, clientMessageID: UUID, body: String) async throws -> SentMessageReceipt {
+        nonisolated struct Params: Encodable { let p_match_id: UUID; let p_client_message_id: UUID; let p_body: String }
+        let rows: [SentMessageDTO] = try await call("send_message",
+                                                    Params(p_match_id: matchID, p_client_message_id: clientMessageID, p_body: body))
+        guard let row = rows.first else { throw CrushlyError.notFound }
+        return SentMessageReceipt(id: row.id, createdAt: row.created_at)
     }
 
-    func respondConnectionAction(actionID: UUID, accept: Bool) async throws {
-        nonisolated struct Params: Encodable { let action_id: UUID; let accept: Bool }
-        try await callVoid("respond_connection_action", Params(action_id: actionID, accept: accept))
+    func markConversationRead(matchID: UUID) async throws {
+        nonisolated struct Params: Encodable { let p_match_id: UUID }
+        try await callVoid("mark_conversation_read", Params(p_match_id: matchID))
     }
 
-    func instagramHandle(matchID: UUID) async throws -> String? {
-        nonisolated struct Params: Encodable { let match_id: UUID }
-        let handle: String? = try await call("connection_instagram", Params(match_id: matchID))
-        return handle
-    }
-
-    func requestFind(matchID: UUID, meetingPoint: String) async throws {
-        nonisolated struct Params: Encodable { let match_id: UUID; let meeting_point: String }
-        try await callVoid("request_find", Params(match_id: matchID, meeting_point: meetingPoint))
-    }
-
-    func respondFind(requestID: UUID, accept: Bool) async throws {
-        nonisolated struct Params: Encodable { let request_id: UUID; let accept: Bool }
-        try await callVoid("respond_find", Params(request_id: requestID, accept: accept))
-    }
-
-    func cancelFind(requestID: UUID) async throws {
-        nonisolated struct Params: Encodable { let request_id: UUID }
-        try await callVoid("cancel_find", Params(request_id: requestID))
-    }
-
-    func completeFind(requestID: UUID) async throws {
-        nonisolated struct Params: Encodable { let request_id: UUID }
-        try await callVoid("complete_find", Params(request_id: requestID))
+    func leaveConversation(matchID: UUID) async throws {
+        nonisolated struct Params: Encodable { let p_match_id: UUID }
+        try await callVoid("leave_conversation", Params(p_match_id: matchID))
     }
 
     // MARK: SafetyService
-
-    func enterShield(durationMinutes: Int?) async throws -> ShieldState {
-        nonisolated struct Params: Encodable { let duration_minutes: Int? }
-        let row: ShieldDTO = try await call("enter_shield", Params(duration_minutes: durationMinutes))
-        return row.domain
-    }
-
-    func exitShield() async throws { try await callVoid("exit_shield") }
 
     func block(userID: UUID) async throws {
         nonisolated struct Params: Encodable { let target: UUID }
@@ -318,10 +308,51 @@ final class SupabaseBackend: CrushlyBackend {
         return rows.map { BlockedUser(id: $0.user_id, firstName: $0.first_name ?? "Someone", blockedAt: $0.created_at) }
     }
 
-    func report(userID: UUID, category: ReportCategory, details: String) async throws {
-        nonisolated struct Context: Encodable { let source = "ios" }
-        nonisolated struct Params: Encodable { let target: UUID; let category: ReportCategory; let details: String; let context: Context }
-        let _: UUID = try await call("report_user", Params(target: userID, category: category, details: details, context: Context()))
+    func report(userID: UUID, category: ReportCategory, details: String, evidenceMessageIDs: [UUID]) async throws {
+        nonisolated struct Params: Encodable {
+            let target: UUID; let category: ReportCategory; let details: String?; let evidence_message_ids: [UUID]
+        }
+        let trimmed = details.trimmingCharacters(in: .whitespacesAndNewlines)
+        let _: UUID = try await call("report_user", Params(target: userID, category: category,
+                                                           details: trimmed.isEmpty ? nil : trimmed,
+                                                           evidence_message_ids: evidenceMessageIDs))
+    }
+
+    // MARK: RealtimeService
+
+    func startPokes(userID: UUID) async -> AsyncStream<RealtimePoke> {
+        await stopPokes()
+        // auth.uid()::text is lowercase; the RLS policy compares topics exactly.
+        let channel = client.channel("user:\(userID.uuidString.lowercased())") { $0.isPrivate = true }
+        pokeChannel = channel
+        let raw = channel.broadcastStream(event: "poke")   // register before subscribing
+        do {
+            try await channel.subscribeWithError()
+        } catch {
+            // Realtime is best effort: the app still refetches on launch, foreground and a light poll.
+        }
+        return AsyncStream { continuation in
+            let task = Task {
+                for await message in raw {
+                    if let poke = Self.parsePoke(message) { continuation.yield(poke) }
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    func stopPokes() async {
+        guard let channel = pokeChannel else { return }
+        pokeChannel = nil
+        await client.removeChannel(channel)
+    }
+
+    /// Accepts the broadcast envelope or the bare payload. Anything but {type, match_id} is ignored.
+    nonisolated static func parsePoke(_ message: JSONObject) -> RealtimePoke? {
+        let body = message["payload"]?.objectValue ?? message
+        guard let kind = body["type"]?.stringValue.flatMap(RealtimePoke.Kind.init(rawValue:)) else { return nil }
+        return RealtimePoke(kind: kind, matchID: body["match_id"]?.stringValue.flatMap(UUID.init(uuidString:)))
     }
 
     // MARK: NotificationService / AnalyticsService
@@ -334,6 +365,11 @@ final class SupabaseBackend: CrushlyBackend {
     func registerDevice(token: String, sandbox: Bool) async throws {
         nonisolated struct Params: Encodable { let token: String; let platform: String; let apns_env: String }
         try await callVoid("register_device", Params(token: token, platform: "ios", apns_env: sandbox ? "sandbox" : "production"))
+    }
+
+    func unregisterDevice(token: String) async throws {
+        nonisolated struct Params: Encodable { let token: String }
+        try await callVoid("unregister_device", Params(token: token))
     }
 
     func track(_ event: AnalyticsEvent) async {

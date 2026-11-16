@@ -8,9 +8,9 @@ Conventions: `snake_case`; timestamps are `timestamptz` (ISO-8601). Every RPC is
 `search_path = public`, executable by `authenticated` only, and resolves the caller with `auth.uid()`. Errors are
 raised as `P0001` with the message set to an error code from §6.
 
-> **Status (2026-11-16):** the SQL is implemented and tested (`supabase/tests/run.sh`). The iOS live service
-> (`Crushly/Services/Live`) still calls the old Pulse RPCs until Phase 4, so **live mode is broken until then**.
-> Demo mode is unaffected.
+> **Status (2026-11-16):** implemented and tested (`supabase/tests/run.sh`). The iOS live service
+> (`Crushly/Services/Live`) calls exactly these RPCs and the realtime channel below. It compiles and its DTOs are
+> unit-tested, but live journeys have not yet been run against the real project (see docs/PRE_LAUNCH_CHECKLIST.md).
 
 ## 1. Settings (`app_settings`, readable by `authenticated`)
 
@@ -120,6 +120,18 @@ intention, availability, photo_paths, photo_review_status`. It never contains a 
 Kinds: `new_match`, `new_message`. The payload is `{match_id}` only. Lock-screen copy (in `functions/push-dispatch`) is
 "You have a new match." / "You have a new message." Message pushes collapse to one per conversation per 2 minutes.
 Relevance is re-checked at send time: the match must still exist, there must be no block, and the preference must be on.
+
+### Realtime pokes (`20261118000000_realtime_pokes.sql`)
+
+Each user may join one **private** Broadcast channel, `user:<auth uid, lowercase>`, receive-only (RLS on
+`realtime.messages`: `extension = 'broadcast'` and `realtime.topic() = 'user:' || auth.uid()`; no insert policy).
+Triggers send event `poke` with payload exactly `{type: 'message' | 'match' | 'conversation_removed', match_id}`:
+`message` on every new message (both participants), `match` on a new match, `conversation_removed` whenever a match
+row is deleted (leave, block, report, account deletion). Clients refetch through `my_conversations` / `fetch_messages`.
+
+Realtime caches channel authorization for the life of a connection (a revoked subscriber keeps receiving until its
+JWT expires), so pokes never carry content; `supabase/tests/80_realtime.sql` checks that nothing a stale subscriber
+could receive contains message text. Deploy: turn off "Allow public access" in Realtime Settings.
 
 ## 6. Error codes
 

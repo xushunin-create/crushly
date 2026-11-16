@@ -11,15 +11,15 @@ nonisolated enum Availability: String, Codable, CaseIterable, Identifiable, Send
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .meetNow: "Meet Now"
-        case .connectLater: "Connect Later"
-        case .either: "Either Works"
+        case .meetNow: "Up for meeting soon"
+        case .connectLater: "Prefer to chat first"
+        case .either: "Either works"
         }
     }
     var symbol: String {
         switch self {
-        case .meetNow: "bolt.heart.fill"
-        case .connectLater: "clock.badge.checkmark"
+        case .meetNow: "cup.and.saucer.fill"
+        case .connectLater: "text.bubble.fill"
         case .either: "sparkles"
         }
     }
@@ -82,7 +82,6 @@ nonisolated struct Profile: Identifiable, Codable, Equatable, Sendable {
 
 /// Private account fields. Never shown to others.
 nonisolated struct PrivateAccount: Codable, Equatable, Sendable {
-    var instagramHandle: String = ""
     var termsAcceptedVersion: String?
     var privacyAcceptedVersion: String?
     var ageConfirmed: Bool = false
@@ -93,7 +92,54 @@ nonisolated struct PrivateAccount: Codable, Equatable, Sendable {
     }
 }
 
-/// What other users may see. Deliberately has no email, coordinates, timestamps of activity or private fields.
+/// Gender values used for matching (server: `profile_private.match_gender` / `show_me`).
+nonisolated enum MatchGender: String, Codable, CaseIterable, Identifiable, Sendable, Comparable {
+    case woman, man, nonbinary
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .woman: "Woman"
+        case .man: "Man"
+        case .nonbinary: "Nonbinary"
+        }
+    }
+    var plural: String {
+        switch self {
+        case .woman: "Women"
+        case .man: "Men"
+        case .nonbinary: "Nonbinary people"
+        }
+    }
+
+    static func < (a: MatchGender, b: MatchGender) -> Bool { a.rawValue < b.rawValue }
+}
+
+/// Private matching preferences, enforced in both directions on the server (`can_match`). Never shown to others.
+nonisolated struct MatchPreferences: Codable, Equatable, Sendable {
+    static let ageFloor = 18
+    /// The editor's top value; it means "and older", stored as the server maximum.
+    static let ageCeilingShown = 60
+    static let ageCeilingStored = 120
+
+    var matchGender: MatchGender?
+    var showMe: Set<MatchGender> = []
+    var ageMin: Int = ageFloor
+    var ageMax: Int = ageCeilingStored
+
+    var isComplete: Bool {
+        matchGender != nil && !showMe.isEmpty && Self.ageFloor <= ageMin && ageMin <= ageMax && ageMax <= Self.ageCeilingStored
+    }
+
+    var missingFields: [String] {
+        var missing: [String] = []
+        if matchGender == nil { missing.append("Match me as") }
+        if showMe.isEmpty { missing.append("Show me") }
+        return missing
+    }
+}
+
+/// What other users may see. Deliberately has no email, location, space, timestamps of activity or private fields.
 nonisolated struct PublicProfile: Identifiable, Codable, Equatable, Hashable, Sendable {
     var id: UUID
     var firstName: String
@@ -108,180 +154,82 @@ nonisolated struct PublicProfile: Identifiable, Codable, Equatable, Hashable, Se
     var availability: Availability
     var photoPaths: [String]
     var photoReviewStatus: ReviewStatus
-    var spaceName: String?
-    /// Demo mode only: a clearly simulated distance band. Always nil in live mode.
-    var simulatedDistanceBand: String?
 
     var isPhotoApproved: Bool { photoReviewStatus == .approved }
 }
 
-nonisolated enum SpaceKind: String, Codable, Sendable { case place, event }
+// MARK: - Participation (BACKEND_CONTRACT §4 "Participation")
 
-nonisolated struct CampusSpace: Identifiable, Codable, Equatable, Hashable, Sendable {
+/// The caller's own live session, as the server reports it. Only ever about the signed-in user.
+nonisolated struct ParticipationSession: Equatable, Sendable {
     var id: UUID
-    var name: String
-    var kind: SpaceKind
-    var subtitle: String
-    var startsAt: Date?
-    var endsAt: Date?
-
-    var symbol: String {
-        switch kind {
-        case .place: "building.columns.fill"
-        case .event: "party.popper.fill"
-        }
-    }
-
-    func hasFutureEnd(now: Date) -> Bool { (endsAt ?? .distantPast) > now }
+    var spaceSlug: String?
+    var boundaryVersion: Int
+    var leaseExpiresAt: Date
+    var lastSeq: Int64
 }
 
-nonisolated struct PulseSession: Identifiable, Codable, Equatable, Sendable {
-    enum State: Equatable { case live, paused, expired, ended }
-
-    var id: UUID
-    var spaceID: UUID
-    var availability: Availability
-    var startedAt: Date
-    var expiresAt: Date
-    var pausedAt: Date?
-    var endedAt: Date?
-    var signalsSent: Int
-
-    func state(at now: Date) -> State {
-        if endedAt != nil { return .ended }
-        if expiresAt <= now { return .expired }
-        if pausedAt != nil { return .paused }
-        return .live
-    }
-
-    func remaining(at now: Date) -> TimeInterval { max(0, expiresAt.timeIntervalSince(now)) }
+/// `my_participation()`: the source of truth for reconciliation on launch and foreground.
+nonisolated struct ParticipationStatus: Equatable, Sendable {
+    var serverNow: Date
+    var consentEpoch: Int64
+    var matchingPaused: Bool
+    var pausedUntil: Date?
+    var session: ParticipationSession?
 }
 
-nonisolated struct ShieldState: Codable, Equatable, Sendable {
-    var startedAt: Date
-    /// nil = until turned off.
-    var activeUntil: Date?
-    func isActive(at now: Date) -> Bool { activeUntil.map { $0 > now } ?? true }
+/// Result of `open_participation` / `renew_participation`.
+nonisolated struct ParticipationLease: Equatable, Sendable {
+    var sessionID: UUID
+    var leaseExpiresAt: Date
+    var serverNow: Date
 }
 
-/// Anonymous receipt. The recipient never learns who sent it.
-nonisolated struct SignalReceipt: Identifiable, Codable, Equatable, Sendable {
-    var id: UUID
-    /// Rounded down to the server's time bucket.
-    var receivedBucket: Date
-    /// Only present when the space was crowded enough to not identify anyone.
-    var spaceName: String?
+// MARK: - Discovery and interest
+
+nonisolated enum DiscoveryResult: Equatable, Sendable {
+    /// Too few people are participating here. Deliberately carries no count.
+    case quiet
+    case candidates([PublicProfile])
 }
 
-nonisolated enum SignalStatus: String, Codable, Sendable { case pending, matched, expired, withdrawn }
-
-nonisolated struct SentSignal: Identifiable, Codable, Equatable, Sendable {
-    var id: UUID
-    var recipient: PublicProfile
-    var createdAt: Date
-    var expiresAt: Date
-    var status: SignalStatus
-}
-
-nonisolated enum SendSignalResult: Equatable, Sendable {
+nonisolated enum InterestResult: Equatable, Sendable {
     case sent(remaining: Int)
     case matched(matchID: UUID, remaining: Int)
 }
 
-nonisolated enum MatchKind: String, Codable, Sendable {
-    case heartSync = "heart_sync"
-    case crossedHearts = "crossed_hearts"
-    var title: String { self == .heartSync ? "Heart Sync" : "Crossed Hearts" }
-}
+// MARK: - Conversations
 
-nonisolated enum ConnectionStatus: String, Codable, Sendable {
-    case pendingConfirmation = "pending_confirmation"
-    case metTonight = "met_tonight"
-    case findLater = "find_later"
-    case expired, removed
-
-    var title: String {
-        switch self {
-        case .pendingConfirmation: "New"
-        case .metTonight: "Met Tonight"
-        case .findLater: "Find Later"
-        case .expired: "Expired"
-        case .removed: "Removed"
-        }
-    }
-}
-
-nonisolated struct Connection: Codable, Equatable, Sendable {
-    var status: ConnectionStatus
-    var confirmBy: Date
-    var activeUntil: Date?
-    var confirmedAt: Date?
-    var lastActivityAt: Date?
-
-    /// The deadline that currently matters for the lifecycle.
-    var deadline: Date? {
-        switch status {
-        case .pendingConfirmation: confirmBy
-        case .metTonight, .findLater: activeUntil
-        case .expired, .removed: nil
-        }
-    }
-}
-
-nonisolated enum ConnectionActionKind: String, Codable, CaseIterable, Sendable {
-    case coffee, studyBreak = "study_break", starter, instagramExchange = "instagram_exchange"
-    var title: String {
-        switch self {
-        case .coffee: "Suggest coffee"
-        case .studyBreak: "Suggest a study break"
-        case .starter: "Send a conversation starter"
-        case .instagramExchange: "Swap Instagram"
-        }
-    }
-    var symbol: String {
-        switch self {
-        case .coffee: "cup.and.saucer.fill"
-        case .studyBreak: "books.vertical.fill"
-        case .starter: "text.bubble.fill"
-        case .instagramExchange: "camera.circle.fill"
-        }
-    }
-}
-
-nonisolated enum RequestStatus: String, Codable, Sendable {
-    case pending, accepted, declined, cancelled
-    case timedOut = "timed_out"
-    case completed
-}
-
-nonisolated struct ConnectionAction: Identifiable, Codable, Equatable, Sendable {
-    var id: UUID
-    var actorID: UUID
-    var kind: ConnectionActionKind
-    var detail: String?
-    var status: RequestStatus
+/// One active match. Stores no place and no time other than when the match (and last message) happened.
+nonisolated struct Conversation: Identifiable, Equatable, Hashable, Sendable {
+    var id: UUID          // match id
     var createdAt: Date
-}
-
-nonisolated struct FindRequest: Identifiable, Codable, Equatable, Sendable {
-    var id: UUID
-    var requesterID: UUID
-    var status: RequestStatus
-    var meetingPoint: String
-    var respondBy: Date
-    var activeUntil: Date?
-}
-
-nonisolated struct Match: Identifiable, Codable, Equatable, Sendable {
-    var id: UUID
-    var kind: MatchKind
-    var createdAt: Date
-    var spaceName: String?
     var other: PublicProfile
-    var connection: Connection
-    var openFind: FindRequest?
-    var actions: [ConnectionAction]
+    var lastMessageAt: Date?
+    var lastMessagePreview: String?
+    var lastMessageFromMe: Bool?
+    var unread: Bool
 }
+
+nonisolated struct ChatMessage: Identifiable, Codable, Equatable, Hashable, Sendable {
+    var id: UUID
+    var senderIsMe: Bool
+    var body: String
+    var createdAt: Date
+}
+
+/// Keyset cursor for `fetch_messages`: both parts or neither.
+nonisolated struct MessageCursor: Equatable, Sendable {
+    var createdAt: Date
+    var id: UUID
+}
+
+nonisolated struct SentMessageReceipt: Equatable, Sendable {
+    var id: UUID
+    var createdAt: Date
+}
+
+// MARK: - Safety
 
 nonisolated struct BlockedUser: Identifiable, Codable, Equatable, Sendable {
     var id: UUID
@@ -306,16 +254,10 @@ nonisolated enum ReportCategory: String, Codable, CaseIterable, Identifiable, Se
     }
 }
 
+/// Server keys `new_matches`, `messages`.
 nonisolated struct NotificationPrefs: Codable, Equatable, Sendable {
-    var anonymousSignals = true
-    var heartSync = true
-    var crossedHearts = true
-    var findRequests = true
-    var connectionReminders = true
-    var connectionExpiry = true
-    var pulseExpiry = true
-    var campusEvents = true
-    var signalsMutedUntil: Date?
+    var newMatches = true
+    var messages = true
 }
 
 /// Everything needed to hydrate the app after sign-in.
@@ -324,8 +266,7 @@ nonisolated struct AccountSnapshot: Equatable, Sendable {
     var email: String
     var profile: Profile?
     var account: PrivateAccount
-    var pulse: PulseSession?
-    var shield: ShieldState?
+    var preferences: MatchPreferences
     var prefs: NotificationPrefs
     var rules: AppRules
     var serverNow: Date

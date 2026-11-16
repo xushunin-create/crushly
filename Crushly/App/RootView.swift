@@ -48,7 +48,7 @@ struct RootView: View {
         .animation(Theme.Motion.soft, value: state.errorMessage)
         .animation(Theme.Motion.soft, value: state.phase)
         .preferredColorScheme(.light)
-        .tint(Theme.Palette.crush)
+        .tint(Theme.Palette.crushText)
     }
 }
 
@@ -79,38 +79,38 @@ struct MainTabs: View {
         ZStack(alignment: .bottom) {
             Group {
                 switch state.selectedTab {
-                case .around: NavigationStack { AroundView() }
-                case .signals: NavigationStack(path: $state.signalsPath) { SignalsView() }
+                case .spaces: NavigationStack { SpacesView() }
+                case .connections: NavigationStack(path: $state.connectionsPath) { ConnectionsView() }
                 case .me: NavigationStack { MeView() }
                 }
             }
-            .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 64) }
+            .safeAreaInset(edge: .bottom) { Color.clear.frame(height: showsTabBar ? 64 : 0) }
 
-            CrushTabBar(selection: $state.selectedTab, signalsBadge: state.receipts.count + pendingIncoming)
+            if showsTabBar {
+                CrushTabBar(selection: $state.selectedTab, connectionsBadge: state.unreadCount)
+            }
         }
         .fullScreenCover(item: $state.revealMatch) { match in
             HeartSyncRevealView(match: match)
         }
+        .sheet(item: $state.consentPrompt) { prompt in
+            ConsentSheet(prompt: prompt)
+        }
     }
 
-    private var pendingIncoming: Int {
-        guard let me = state.userID else { return 0 }
-        return state.activeMatches.filter { match in
-            (match.openFind?.status == .pending && match.openFind?.requesterID != me)
-                || match.actions.contains { $0.status == .pending && $0.actorID != me }
-        }.count
-    }
+    /// Like Messages, the tab bar steps aside inside a conversation so the composer is never covered.
+    private var showsTabBar: Bool { !(state.selectedTab == .connections && !state.connectionsPath.isEmpty) }
 }
 
 struct CrushTabBar: View {
     @Binding var selection: AppState.Tab
-    var signalsBadge: Int
+    var connectionsBadge: Int
     @Environment(AppState.self) private var state
 
     var body: some View {
         HStack(spacing: 0) {
-            item(.around, "Around", "dot.radiowaves.left.and.right")
-            item(.signals, "Signals", "heart.text.square.fill", badge: signalsBadge)
+            item(.spaces, "Spaces", "building.columns.fill")
+            item(.connections, "Connections", "heart.text.square.fill", badge: connectionsBadge)
             item(.me, "Me", "person.crop.circle.fill")
         }
         .padding(.horizontal, Theme.Space.s)
@@ -154,6 +154,8 @@ struct CrushTabBar: View {
                 }
                 Text(title)
                     .font(Theme.Typeface.caption.weight(.bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
                     .foregroundStyle(selected ? Theme.Palette.ink : Theme.Palette.inkSoft)
             }
             .frame(maxWidth: .infinity, minHeight: Theme.minTap)

@@ -1,6 +1,6 @@
 import Foundation
 
-// Wire formats for the RPCs in docs/BACKEND_CONTRACT.md. Property names match SQL column names exactly.
+// Wire formats for the RPCs in docs/BACKEND_CONTRACT.md. Property names match SQL names exactly.
 // Map into domain models immediately; nothing outside Services/Live uses these types.
 
 nonisolated struct ProfileDTO: Codable, Sendable {
@@ -41,94 +41,66 @@ nonisolated struct ProfileDTO: Codable, Sendable {
 }
 
 nonisolated struct PrivateDTO: Decodable, Sendable {
-    var instagram_handle: String?
     var age_confirmed_at: Date?
     var terms_version: String?
     var privacy_version: String?
     var verified_only_discovery: Bool?
+    var match_gender: String?
+    var show_me: [String]?
+    var age_min: Int?
+    var age_max: Int?
 
-    var domain: PrivateAccount {
-        PrivateAccount(instagramHandle: instagram_handle ?? "", termsAcceptedVersion: terms_version,
-                       privacyAcceptedVersion: privacy_version, ageConfirmed: age_confirmed_at != nil,
-                       verifiedOnlyDiscovery: verified_only_discovery ?? false)
+    var account: PrivateAccount {
+        PrivateAccount(termsAcceptedVersion: terms_version, privacyAcceptedVersion: privacy_version,
+                       ageConfirmed: age_confirmed_at != nil, verifiedOnlyDiscovery: verified_only_discovery ?? false)
     }
-}
 
-nonisolated struct SessionDTO: Decodable, Sendable {
-    var id: UUID
-    var space_id: UUID
-    var availability: Availability
-    var started_at: Date
-    var expires_at: Date
-    var paused_at: Date?
-    var ended_at: Date?
-    var signals_sent: Int
-
-    var domain: PulseSession {
-        PulseSession(id: id, spaceID: space_id, availability: availability, startedAt: started_at, expiresAt: expires_at,
-                     pausedAt: paused_at, endedAt: ended_at, signalsSent: signals_sent)
+    var preferences: MatchPreferences {
+        MatchPreferences(matchGender: match_gender.flatMap(MatchGender.init(rawValue:)),
+                         showMe: Set((show_me ?? []).compactMap(MatchGender.init(rawValue:))),
+                         ageMin: age_min ?? MatchPreferences.ageFloor,
+                         ageMax: age_max ?? MatchPreferences.ageCeilingStored)
     }
-}
-
-nonisolated struct ShieldDTO: Decodable, Sendable {
-    var started_at: Date
-    var active_until: Date?
-    var domain: ShieldState { ShieldState(startedAt: started_at, activeUntil: active_until) }
 }
 
 nonisolated struct PrefsDTO: Codable, Sendable {
-    var anonymous_signals: Bool?
-    var heart_sync: Bool?
-    var crossed_hearts: Bool?
-    var find_requests: Bool?
-    var connection_reminders: Bool?
-    var connection_expiry: Bool?
-    var pulse_expiry: Bool?
-    var campus_events: Bool?
-    var signals_muted_until: Date?
+    var new_matches: Bool?
+    var messages: Bool?
 
-    init(_ p: NotificationPrefs) {
-        anonymous_signals = p.anonymousSignals; heart_sync = p.heartSync; crossed_hearts = p.crossedHearts
-        find_requests = p.findRequests; connection_reminders = p.connectionReminders; connection_expiry = p.connectionExpiry
-        pulse_expiry = p.pulseExpiry; campus_events = p.campusEvents; signals_muted_until = p.signalsMutedUntil
-    }
+    init(_ p: NotificationPrefs) { new_matches = p.newMatches; messages = p.messages }
 
     var domain: NotificationPrefs {
-        NotificationPrefs(anonymousSignals: anonymous_signals ?? true, heartSync: heart_sync ?? true,
-                          crossedHearts: crossed_hearts ?? true, findRequests: find_requests ?? true,
-                          connectionReminders: connection_reminders ?? true, connectionExpiry: connection_expiry ?? true,
-                          pulseExpiry: pulse_expiry ?? true, campusEvents: campus_events ?? true,
-                          signalsMutedUntil: signals_muted_until)
+        NotificationPrefs(newMatches: new_matches ?? true, messages: messages ?? true)
     }
 }
 
 /// `app_settings` rows folded into an object keyed by setting name.
 nonisolated struct SettingsDTO: Decodable, Sendable {
     var allowed_email_domains: [String]?
-    var pulse_durations_minutes: [Int]?
-    var signals_per_session: Int?
-    var signal_validity_hours: Int?
-    var encounter_window_hours: Int?
-    var connection_confirm_hours: Int?
-    var connection_inactive_days: Int?
-    var find_request_timeout_minutes: Int?
-    var find_active_minutes: Int?
-    var shield_durations_minutes: [Int]?
-    var require_own_pulse_to_view_around: Bool?
+    var participation_lease_seconds: Int?
+    var evidence_max_accuracy_m: Double?
+    var evidence_max_fix_age_seconds: Double?
+    var evidence_stationary_max_fix_age_seconds: Double?
+    var allow_draft_spaces: Bool?
+    var discovery_min_participants: Int?
+    var discovery_max_results: Int?
+    var interests_per_session: Int?
+    var pause_durations_minutes: [Int]?
+    var message_max_chars: Int?
 
     var domain: AppRules {
         var rules = AppRules.default
         if let v = allowed_email_domains { rules.allowedEmailDomains = v }
-        if let v = pulse_durations_minutes { rules.pulseDurationsMinutes = v }
-        if let v = signals_per_session { rules.signalsPerSession = v }
-        if let v = signal_validity_hours { rules.signalValidityHours = v }
-        if let v = encounter_window_hours { rules.encounterWindowHours = v }
-        if let v = connection_confirm_hours { rules.connectionConfirmHours = v }
-        if let v = connection_inactive_days { rules.connectionInactiveDays = v }
-        if let v = find_request_timeout_minutes { rules.findRequestTimeoutMinutes = v }
-        if let v = find_active_minutes { rules.findActiveMinutes = v }
-        if let v = shield_durations_minutes { rules.shieldDurationsMinutes = v.map { Optional($0) } + [nil] }
-        if let v = require_own_pulse_to_view_around { rules.requireOwnPulseToViewAround = v }
+        if let v = participation_lease_seconds { rules.participationLeaseSeconds = v }
+        if let v = evidence_max_accuracy_m { rules.evidenceMaxAccuracyMeters = v }
+        if let v = evidence_max_fix_age_seconds { rules.evidenceMaxFixAgeSeconds = v }
+        if let v = evidence_stationary_max_fix_age_seconds { rules.evidenceStationaryMaxFixAgeSeconds = v }
+        if let v = allow_draft_spaces { rules.allowDraftSpaces = v }
+        if let v = discovery_min_participants { rules.discoveryMinParticipants = v }
+        if let v = discovery_max_results { rules.discoveryMaxResults = v }
+        if let v = interests_per_session { rules.interestsPerSession = v }
+        if let v = pause_durations_minutes { rules.pauseDurationsMinutes = v }
+        if let v = message_max_chars { rules.messageMaxChars = v }
         return rules
     }
 }
@@ -136,35 +108,21 @@ nonisolated struct SettingsDTO: Decodable, Sendable {
 nonisolated struct StateDTO: Decodable, Sendable {
     var profile: ProfileDTO?
     var privateAccount: PrivateDTO?
-    var pulse: SessionDTO?
-    var shield: ShieldDTO?
     var prefs: PrefsDTO?
     var settings: SettingsDTO?
     var serverNow: Date?
 
     enum CodingKeys: String, CodingKey {
-        case profile, pulse, shield, prefs, settings
+        case profile, prefs, settings
         case privateAccount = "private"
         case serverNow = "now"
     }
 }
 
-nonisolated struct SpaceDTO: Decodable, Sendable {
-    var id: UUID
-    var name: String
-    var kind: SpaceKind
-    var subtitle: String?
-    var starts_at: Date?
-    var ends_at: Date?
-    var domain: CampusSpace {
-        CampusSpace(id: id, name: name, kind: kind, subtitle: subtitle ?? "", startsAt: starts_at, endsAt: ends_at)
-    }
-}
-
 nonisolated struct PublicProfileDTO: Decodable, Sendable {
     var id: UUID
-    var first_name: String
-    var age: Int
+    var first_name: String?
+    var age: Int?
     var pronouns: String?
     var gender: String?
     var interests: [String]?
@@ -175,83 +133,158 @@ nonisolated struct PublicProfileDTO: Decodable, Sendable {
     var availability: Availability?
     var photo_paths: [String]?
     var photo_review_status: ReviewStatus?
-    var space_name: String?
 
     var domain: PublicProfile {
         PublicProfile(
-            id: id, firstName: first_name, age: age, pronouns: pronouns ?? "", gender: gender ?? "",
+            id: id, firstName: first_name ?? "Someone", age: age ?? 18, pronouns: pronouns ?? "", gender: gender ?? "",
             interests: interests ?? [], vibeTags: vibe_tags ?? [], promptQuestion: prompt_question ?? "",
             promptAnswer: prompt_answer ?? "", intention: intention ?? .figuringItOut, availability: availability ?? .either,
-            photoPaths: photo_paths ?? [], photoReviewStatus: photo_review_status ?? .pending, spaceName: space_name,
-            simulatedDistanceBand: nil
+            photoPaths: photo_paths ?? [], photoReviewStatus: photo_review_status ?? .pending
         )
     }
 }
 
-nonisolated struct ReceiptDTO: Decodable, Sendable {
-    var id: UUID
-    var received_bucket: Date
-    var space_name: String?
-}
+// MARK: Participation
 
-nonisolated struct SentSignalDTO: Decodable, Sendable {
-    var id: UUID
-    var recipient: PublicProfileDTO
-    var created_at: Date
-    var expires_at: Date
-    var status: SignalStatus
-}
+/// The evidence object the participation RPCs expect. No coordinates, by construction.
+nonisolated struct EvidenceDTO: Encodable, Sendable {
+    var fix_ts_ms: Int64
+    var fix_age_ms: Int64
+    var horizontal_accuracy_m: Double
+    var stationary: Bool
 
-nonisolated struct ConnectionDTO: Decodable, Sendable {
-    var status: ConnectionStatus
-    var confirm_by: Date
-    var active_until: Date?
-    var confirmed_at: Date?
-    var last_activity_at: Date?
-    var domain: Connection {
-        Connection(status: status, confirmBy: confirm_by, activeUntil: active_until, confirmedAt: confirmed_at,
-                   lastActivityAt: last_activity_at)
+    init(_ e: LocationEvidence) {
+        fix_ts_ms = Int64((e.fixTimestamp.timeIntervalSince1970 * 1000).rounded())
+        fix_age_ms = Int64(max(0, e.fixAge * 1000).rounded())
+        horizontal_accuracy_m = e.horizontalAccuracy
+        stationary = e.stationary
     }
 }
 
-nonisolated struct FindDTO: Decodable, Sendable {
-    var id: UUID
-    var requester_id: UUID
-    var status: RequestStatus
-    var meeting_point: String?
-    var respond_by: Date
-    var active_until: Date?
-    var domain: FindRequest {
-        FindRequest(id: id, requesterID: requester_id, status: status, meetingPoint: meeting_point ?? "",
-                    respondBy: respond_by, activeUntil: active_until)
+nonisolated struct ParticipationDTO: Decodable, Sendable {
+    nonisolated struct Session: Decodable, Sendable {
+        var id: UUID
+        var space_slug: String?
+        var boundary_version: Int
+        var lease_expires_at: Date
+        var last_seq: Int64
+    }
+    var now: Date
+    var consent_epoch: Int64
+    var matching_paused: Bool
+    var paused_until: Date?
+    var session: Session?
+
+    var domain: ParticipationStatus {
+        ParticipationStatus(
+            serverNow: now, consentEpoch: consent_epoch, matchingPaused: matching_paused, pausedUntil: paused_until,
+            session: session.map { ParticipationSession(id: $0.id, spaceSlug: $0.space_slug, boundaryVersion: $0.boundary_version,
+                                                        leaseExpiresAt: $0.lease_expires_at, lastSeq: $0.last_seq) })
     }
 }
 
-nonisolated struct ActionDTO: Decodable, Sendable {
-    struct Payload: Decodable, Sendable { var detail: String? }
-    var id: UUID
-    var actor_id: UUID
-    var kind: ConnectionActionKind
-    var payload: Payload?
-    var status: RequestStatus
-    var created_at: Date
-    var domain: ConnectionAction {
-        ConnectionAction(id: id, actorID: actor_id, kind: kind, detail: payload?.detail, status: status, createdAt: created_at)
+nonisolated struct LeaseDTO: Decodable, Sendable {
+    var session_id: UUID
+    var lease_expires_at: Date
+    var now: Date
+    var domain: ParticipationLease { ParticipationLease(sessionID: session_id, leaseExpiresAt: lease_expires_at, serverNow: now) }
+}
+
+nonisolated struct DiscoveryDTO: Decodable, Sendable {
+    var status: String
+    var profiles: [PublicProfileDTO]
+    var domain: DiscoveryResult {
+        status == "quiet" ? .quiet : .candidates(profiles.map(\.domain))
     }
 }
 
-nonisolated struct MatchDTO: Decodable, Sendable {
+nonisolated struct InterestDTO: Decodable, Sendable {
+    var result: String
+    var match_id: UUID?
+    var remaining: Int
+    var domain: InterestResult {
+        if result == "matched", let id = match_id { return .matched(matchID: id, remaining: remaining) }
+        return .sent(remaining: remaining)
+    }
+}
+
+// MARK: Conversations
+
+nonisolated struct ConversationDTO: Decodable, Sendable {
     var match_id: UUID
-    var kind: MatchKind
     var created_at: Date
-    var space_name: String?
     var other: PublicProfileDTO
-    var connection: ConnectionDTO
-    var open_find: FindDTO?
-    var actions: [ActionDTO]?
+    var last_message_at: Date?
+    var last_message_preview: String?
+    var last_message_from_me: Bool?
+    var unread: Bool?
 
-    var domain: Match {
-        Match(id: match_id, kind: kind, createdAt: created_at, spaceName: space_name, other: other.domain,
-              connection: connection.domain, openFind: open_find?.domain, actions: (actions ?? []).map(\.domain))
+    var domain: Conversation {
+        Conversation(id: match_id, createdAt: created_at, other: other.domain, lastMessageAt: last_message_at,
+                     lastMessagePreview: last_message_preview, lastMessageFromMe: last_message_from_me, unread: unread ?? false)
     }
+}
+
+nonisolated struct MessageDTO: Decodable, Sendable {
+    var id: UUID
+    var sender_is_me: Bool
+    var body: String
+    /// Kept at full microsecond precision: it is half of the keyset cursor.
+    var created_at: Date
+
+    private enum CodingKeys: String, CodingKey { case id, sender_is_me, body, created_at }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        sender_is_me = try c.decode(Bool.self, forKey: .sender_is_me)
+        body = try c.decode(String.self, forKey: .body)
+        let raw = try c.decode(String.self, forKey: .created_at)
+        guard let date = PreciseTimestamp.parse(raw) else {
+            throw DecodingError.dataCorruptedError(forKey: .created_at, in: c, debugDescription: "Bad timestamp")
+        }
+        created_at = date
+    }
+
+    var domain: ChatMessage { ChatMessage(id: id, senderIsMe: sender_is_me, body: body, createdAt: created_at) }
+}
+
+/// Postgres timestamps carry microseconds; the SDK's default date coding keeps only milliseconds, which would make a
+/// keyset cursor skip messages sent within the same millisecond. A Double holds today's epoch to ~0.24 µs, so
+/// rounding to the nearest microsecond recovers the exact server value.
+nonisolated enum PreciseTimestamp {
+    static func parse(_ string: String) -> Date? {
+        var main = string
+        var fraction = 0.0
+        if let dot = string.firstIndex(of: ".") {
+            let afterDot = string[string.index(after: dot)...]
+            let digits = afterDot.prefix { $0.isNumber }
+            fraction = Double("0." + digits) ?? 0
+            main = String(string[..<dot]) + afterDot.dropFirst(digits.count)
+        }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        if let base = formatter.date(from: main) { return base.addingTimeInterval(fraction) }
+        // Postgres may print a bare "+00" offset.
+        if main.range(of: #"[+-]\d\d$"#, options: .regularExpression) != nil, let base = formatter.date(from: main + ":00") {
+            return base.addingTimeInterval(fraction)
+        }
+        return nil
+    }
+
+    static func format(_ date: Date) -> String {
+        let micros = (date.timeIntervalSince1970 * 1_000_000).rounded()
+        let seconds = (micros / 1_000_000).rounded(.down)
+        let fraction = Int(micros - seconds * 1_000_000)
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        let base = formatter.string(from: Date(timeIntervalSince1970: seconds))   // …:SSZ
+        return String(base.dropLast()) + String(format: ".%06dZ", fraction)
+    }
+}
+
+nonisolated struct SentMessageDTO: Decodable, Sendable {
+    var id: UUID
+    var created_at: Date
 }
