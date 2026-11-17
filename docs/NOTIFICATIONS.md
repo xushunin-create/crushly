@@ -32,6 +32,10 @@ There are no presence, arrival, interest or pause notifications: those would rev
 
 ## Setup still required (blocked on Apple credentials)
 
+> Status 2026-11-17: `push-dispatch` (Verify JWT off) and `delete-account` (Verify JWT on) are deployed;
+> `PUSH_DISPATCH_SECRET` and `APNS_TOPIC` are set and the Vault secret exists. Remaining: the .p8 key
+> (`APNS_KEY_P8`, `APNS_KEY_ID`, `APNS_TEAM_ID`), then `supabase/ops/schedule_push.sql`.
+
 1. **Apple Developer account:**
    - Create an APNs Auth Key (.p8) under Certificates, Identifiers & Profiles → Keys. Note the Key ID and your Team ID.
    - Push Notifications capability: done in the project (`Config/Crushly.entitlements`, `aps-environment`). With automatic signing, Xcode enables Push on the App ID the first time you build to a device; the team must be a paid Apple Developer Program team.
@@ -43,8 +47,8 @@ There are no presence, arrival, interest or pause notifications: those would rev
    |---|---|
    | `APNS_KEY_P8` | Full contents of the .p8 file |
    | `APNS_KEY_ID` | Key ID |
-   | `APNS_TEAM_ID` | Team ID of the team that owns `com.iya.crushly` (the app target is signed with `BKR349AF34`; the test targets use a different team) |
-   | `APNS_TOPIC` | `com.iya.crushly` |
+   | `APNS_TEAM_ID` | Team ID of the team that owns `com.pt.crushly` (the app target is signed with `BKR349AF34`; the test targets use a different team) |
+   | `APNS_TOPIC` | `com.pt.crushly` (the app's bundle ID) |
    | `PUSH_DISPATCH_SECRET` | A long random string |
 
 4. **Run it every minute.** Enable the `pg_cron` and `pg_net` extensions, then run the SQL below. The secret lives in Vault, never in the migration:

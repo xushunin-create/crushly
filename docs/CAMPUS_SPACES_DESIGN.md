@@ -176,7 +176,7 @@ It is checked in `discover_candidates`, `express_interest` and the match transac
 ### 5.2 `discover_candidates(session_id)`
 
 - Requires the caller's own active session (no lurking while invisible).
-- **Low-population safeguard:** if fewer than `min_participants` (default **4**, counting the caller) have active sessions in the space, it returns `{status: 'quiet', profiles: []}`. Exact counts are never returned. Tradeoff: a higher value makes it harder to work out who is there, but quiet spaces then show nothing. 4 is a starting point and can be tuned per space.
+- **Low-population safeguard:** if fewer than `min_participants` (default **2**, counting the caller) have active sessions in the space, it returns `{status: 'quiet', profiles: []}`. Exact counts are never returned. Tradeoff: a higher value makes it harder to work out who is there, but quiet spaces then show nothing. 2 is the current setting (lowered from 4) and can be tuned per space.
 - Returns at most **8** profiles, in random order on every call (`order by random()`). There's no stable order or cursor to diff between calls.
 - Rate limit: 1 call per 15 s and 60 per hour per user, enforced in SQL via a small `rate_limits` counter table (§7.4).
 - The returned `public_profile` has **no** space, timestamps, session ids or status.

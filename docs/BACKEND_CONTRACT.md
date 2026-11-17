@@ -22,7 +22,7 @@ raised as `P0001` with the message set to an error code from §6.
 | `evidence_max_fix_age_seconds` | `15` | Max age of a moving fix when sent |
 | `evidence_stationary_max_fix_age_seconds` | `300` | Max age of a re-cited fix while Core Location reports stationary |
 | `allow_draft_spaces` | `false` | Dev/staging only: allow `draft` spaces |
-| `discovery_min_participants` | `4` | Low-population safeguard (counts the caller) |
+| `discovery_min_participants` | `2` | Low-population safeguard (counts the caller) |
 | `discovery_max_results` | `8` | Max candidates per discovery call |
 | `interests_per_session` | `5` | Interests per visit |
 | `receipt_delay_min_seconds` / `_max_` | `30` / `90` | Random delay before an anonymous receipt appears |

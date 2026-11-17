@@ -127,7 +127,7 @@ struct DemoRulesTests {
 
         let park = TestWorld.demo()
         _ = try await open(park, DemoWorld.alumniPark)
-        #expect(names(try await park.discoverCandidates()) == ["Devon", "Kai"], "Lena's age range excludes you")
+        #expect(names(try await park.discoverCandidates()) == ["Rio", "Devon", "Kai"], "Lena's age range excludes you")
     }
 
     @Test func verifiedOnlyUserAppearsAfterApproval() async throws {

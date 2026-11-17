@@ -16,18 +16,18 @@ begin
   perform tests.expect_error(format('select public.express_interest(%L)', b), 'not_participating', 'invisible user cannot express interest');
 
   -- Low-population safeguard ------------------------------------------------------------------
-  perform tests.participate(a, 'quad'); perform tests.participate(b, 'quad'); perform tests.participate(c, 'quad');
+  perform tests.participate(a, 'quad');
   perform tests.login(a);
   r := public.discover_candidates();
-  perform tests.assert(r->>'status' = 'quiet' and r->'profiles' = '[]'::jsonb, 'fewer than 4 participants: nothing shown');
+  perform tests.assert(r->>'status' = 'quiet' and r->'profiles' = '[]'::jsonb, 'fewer than 2 participants: nothing shown');
   perform tests.assert(not r ? 'count', 'no participant count is ever returned');
   perform tests.reset_rate_limits();
 
-  perform tests.participate(d, 'quad');
+  perform tests.participate(b, 'quad'); perform tests.participate(c, 'quad'); perform tests.participate(d, 'quad');
   perform tests.participate(e, 'lawn');
   perform tests.login(a);
   r := public.discover_candidates();
-  perform tests.assert(r->>'status' = 'ok', 'four participants: discovery opens');
+  perform tests.assert(r->>'status' = 'ok', 'enough participants: discovery opens');
   v_ids := array(select (x->>'id')::uuid from jsonb_array_elements(r->'profiles') x);
   perform tests.assert(v_ids @> array[b, c, d] and cardinality(v_ids) = 3, 'sees exactly the other eligible participants in the same space');
   perform tests.assert(not (e = any (v_ids)), 'never sees participants in another space');

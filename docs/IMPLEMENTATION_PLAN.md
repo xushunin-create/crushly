@@ -37,7 +37,7 @@ supabase/         migrations · seed · functions · tests (SQL, Docker)
 | Allowed email domains | `usc.edu` |
 | Participation | When-In-Use location only; explicit "Open to matching" per visit; 60 s lease renewed every 20 s with fresh evidence |
 | Evidence | accuracy ≤ 30 m; fix age ≤ 15 s (≤ 300 s re-cited while stationary); monotonic fix times and sequence numbers |
-| Discovery | Own active session required; `quiet` below 4 participants (no counts); ≤ 8 random profiles; 1 call / 15 s, 60 / h |
+| Discovery | Own active session required; `quiet` below 2 participants (no counts); ≤ 8 random profiles; 1 call / 15 s, 60 / h |
 | Interest | Only toward someone shown this visit; 5 per visit; anonymous receipt after 30–90 s; deleted when either session ends |
 | Matching | Both live in the same space and boundary version, mutual preferences (gender + age), verified-only, no block, not paused |
 | Chat | 1–2000 chars; 20 / min, 500 / day; retry-safe ids; leave & delete removes history for both |

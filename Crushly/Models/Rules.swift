@@ -10,7 +10,7 @@ nonisolated struct AppRules: Codable, Equatable, Sendable {
     var evidenceStationaryMaxFixAgeSeconds: Double = 300
     /// Dev/staging only. Production must keep this false (see docs/PRE_LAUNCH_CHECKLIST.md).
     var allowDraftSpaces: Bool = false
-    var discoveryMinParticipants: Int = 4
+    var discoveryMinParticipants: Int = 2
     var discoveryMaxResults: Int = 8
     var interestsPerSession: Int = 5
     /// Offered pause lengths in minutes. "Until I turn it back on" is always offered as well.
