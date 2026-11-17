@@ -7,6 +7,8 @@ struct TermsView: View {
     @State private var acceptsTerms = false
     @State private var acceptsPrivacy = false
     @State private var showing: LegalDoc?
+    /// Documents read to the bottom; each acceptance stays locked until its document is in here.
+    @State private var readToEnd: Set<LegalDoc> = []
 
     typealias LegalDoc = LegalDocuments.Kind
 
@@ -43,7 +45,9 @@ struct TermsView: View {
             }
             .padding(Theme.Space.gutter)
         }
-        .sheet(item: $showing) { doc in LegalDocumentView(kind: doc) }
+        .sheet(item: $showing) { doc in
+            LegalDocumentView(kind: doc) { readToEnd.insert(doc) }
+        }
     }
 
     private func promise(_ icon: String, _ title: String, _ detail: String) -> some View {
@@ -58,7 +62,8 @@ struct TermsView: View {
     }
 
     private func check(_ value: Binding<Bool>, _ title: String, detail: String? = nil, link: LegalDoc? = nil, id: String) -> some View {
-        HStack(spacing: Theme.Space.m) {
+        let locked = link.map { !readToEnd.contains($0) } ?? false
+        return HStack(spacing: Theme.Space.m) {
             Button {
                 value.wrappedValue.toggle()
                 state.feedback.play(.tap)
@@ -70,6 +75,10 @@ struct TermsView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(title).font(Theme.Typeface.callout.weight(.semibold)).foregroundStyle(Theme.Palette.ink)
                         if let detail { Text(detail).font(Theme.Typeface.footnote).foregroundStyle(Theme.Palette.inkSoft) }
+                        if locked, let link {
+                            Text("Tap Read and scroll to the end of the \(link.rawValue) first.")
+                                .font(Theme.Typeface.footnote).foregroundStyle(Theme.Palette.inkSoft)
+                        }
                     }
                     Spacer(minLength: 0)
                 }
@@ -77,6 +86,8 @@ struct TermsView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .disabled(locked)
+            .opacity(locked ? 0.4 : 1)
             .accessibilityAddTraits(value.wrappedValue ? .isSelected : [])
             .accessibilityIdentifier(id)
             if let link {
@@ -92,7 +103,10 @@ struct TermsView: View {
 
 struct LegalDocumentView: View {
     let kind: LegalDocuments.Kind
+    /// Called once the reader has scrolled to the bottom of a loaded document.
+    var onReadToEnd: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
+    @State private var reachedEnd = false
 
     var body: some View {
         NavigationStack {
@@ -114,6 +128,15 @@ struct LegalDocumentView: View {
                 }
                 .padding(Theme.Space.gutter)
             }
+            .onScrollGeometryChange(for: Bool.self) { geo in
+                // True when the bottom edge of the content is on screen (also true if the document fits without scrolling).
+                geo.contentOffset.y + geo.containerSize.height >= geo.contentSize.height - 24
+            } action: { _, atBottom in
+                guard atBottom, !reachedEnd, LegalDocuments.text(kind) != nil else { return }
+                reachedEnd = true
+                onReadToEnd?()
+            }
+            .accessibilityIdentifier("legal.scroll")
             .navigationTitle(kind.rawValue)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }

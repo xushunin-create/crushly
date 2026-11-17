@@ -281,7 +281,11 @@ struct ProfileEditorView: View {
     private var matchingPreferences: some View {
         VStack(alignment: .leading, spacing: Theme.Space.m) {
             Eyebrow(text: "Matching preferences · private")
-            Text("Match me as").font(Theme.Typeface.callout.weight(.semibold))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("I am").font(Theme.Typeface.callout.weight(.semibold))
+                Text("Your gender, so you only appear to people looking for you. Never shown on your profile.")
+                    .font(Theme.Typeface.footnote).foregroundStyle(Theme.Palette.inkSoft)
+            }
             FlowLayout(spacing: 8) {
                 ForEach(MatchGender.allCases) { option in
                     SelectableChip(title: option.title, selected: preferences.matchGender == option) {

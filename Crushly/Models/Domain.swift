@@ -133,7 +133,7 @@ nonisolated struct MatchPreferences: Codable, Equatable, Sendable {
 
     var missingFields: [String] {
         var missing: [String] = []
-        if matchGender == nil { missing.append("Match me as") }
+        if matchGender == nil { missing.append("I am") }
         if showMe.isEmpty { missing.append("Show me") }
         return missing
     }

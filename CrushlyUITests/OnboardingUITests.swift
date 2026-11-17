@@ -31,8 +31,19 @@ final class OnboardingUITests: XCTestCase {
         XCTAssertTrue(continueButton.waitForExistence(timeout: 5))
         XCTAssertFalse(continueButton.isEnabled)
         app.buttons["terms.age"].tap()
-        app.buttons["terms.tos"].tap()
-        app.buttons["terms.privacy"].tap()
+        // Acceptances stay locked until each document has been scrolled to the end.
+        XCTAssertFalse(app.buttons["terms.tos"].isEnabled)
+        XCTAssertFalse(app.buttons["terms.privacy"].isEnabled)
+        for (doc, id) in [("Terms of Service", "terms.tos"), ("Privacy Policy", "terms.privacy")] {
+            app.buttons["Read \(doc)"].tap()
+            let scroll = app.scrollViews["legal.scroll"]
+            XCTAssertTrue(scroll.waitForExistence(timeout: 5))
+            for _ in 0..<20 { scroll.swipeUp(velocity: .fast) }   // overshooting the bottom is harmless
+            app.buttons["Done"].tap()
+            XCTAssertTrue(app.buttons[id].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.buttons[id].isEnabled, "\(doc) should unlock after reading to the end")
+            app.buttons[id].tap()
+        }
         continueButton.tap()
 
         // Profile.
