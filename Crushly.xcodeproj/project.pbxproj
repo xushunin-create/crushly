@@ -411,6 +411,7 @@
 				DEVELOPMENT_TEAM = BKR349AF34;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				CODE_SIGN_ENTITLEMENTS = Config/Crushly.entitlements;
 				INFOPLIST_FILE = "Config/Crushly-Info.plist";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -444,6 +445,7 @@
 				DEVELOPMENT_TEAM = BKR349AF34;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				CODE_SIGN_ENTITLEMENTS = Config/Crushly.entitlements;
 				INFOPLIST_FILE = "Config/Crushly-Info.plist";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

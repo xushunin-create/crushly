@@ -34,7 +34,7 @@ There are no presence, arrival, interest or pause notifications: those would rev
 
 1. **Apple Developer account:**
    - Create an APNs Auth Key (.p8) under Certificates, Identifiers & Profiles → Keys. Note the Key ID and your Team ID.
-   - In Xcode, select the Crushly target → Signing & Capabilities → **+ Push Notifications**. This adds the `aps-environment` entitlement.
+   - Push Notifications capability: done in the project (`Config/Crushly.entitlements`, `aps-environment`). With automatic signing, Xcode enables Push on the App ID the first time you build to a device; the team must be a paid Apple Developer Program team.
    - Until both are done, iOS refuses remote registration. The app handles that and keeps local reminders working.
 2. **Database:** all migrations applied (see [PRE_LAUNCH_CHECKLIST.md](PRE_LAUNCH_CHECKLIST.md) §1).
 3. **Deploy the dispatcher.** Go to Edge Functions → Deploy new function → `push-dispatch` → paste the file. **Turn "Verify JWT" off**: the function checks its own shared secret instead. Then add these secrets under Edge Functions → Secrets:
@@ -43,7 +43,7 @@ There are no presence, arrival, interest or pause notifications: those would rev
    |---|---|
    | `APNS_KEY_P8` | Full contents of the .p8 file |
    | `APNS_KEY_ID` | Key ID |
-   | `APNS_TEAM_ID` | Team ID (currently `22MPL655RF` in the Xcode project) |
+   | `APNS_TEAM_ID` | Team ID of the team that owns `com.iya.crushly` (the app target is signed with `BKR349AF34`; the test targets use a different team) |
    | `APNS_TOPIC` | `com.iya.crushly` |
    | `PUSH_DISPATCH_SECRET` | A long random string |
 
