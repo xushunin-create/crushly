@@ -382,14 +382,6 @@ final class DemoBackend: CrushlyBackend {
         signedInEmail = email.lowercased()
     }
 
-    #if DEBUG
-    func devSignIn(email: String) async throws {
-        try await pause()
-        guard rules.isAllowedEmail(email) else { throw CrushlyError.domainNotAllowed }
-        signedInEmail = email.lowercased()
-    }
-    #endif
-
     func signOut() async throws {
         await stopPokes()
         signedInEmail = nil

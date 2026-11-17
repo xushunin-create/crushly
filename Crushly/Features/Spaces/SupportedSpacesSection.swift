@@ -36,6 +36,9 @@ struct SupportedSpacesSection: View {
                 .crushCard(padding: Theme.Space.m)
                 .accessibilityElement(children: .combine)
             }
+            #if DEBUG
+            FieldValidationToggle()
+            #endif
             VStack(alignment: .leading, spacing: Theme.Space.xs) {
                 NavigationLink { HowMatchingWorksView() } label: {
                     Label("How matching works", systemImage: "questionmark.circle")

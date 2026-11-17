@@ -8,7 +8,7 @@ struct TermsView: View {
     @State private var acceptsPrivacy = false
     @State private var showing: LegalDoc?
 
-    enum LegalDoc: String, Identifiable { case terms = "Terms of Service", privacy = "Privacy Policy"; var id: String { rawValue } }
+    typealias LegalDoc = LegalDocuments.Kind
 
     var body: some View {
         ScrollView {
@@ -43,7 +43,7 @@ struct TermsView: View {
             }
             .padding(Theme.Space.gutter)
         }
-        .sheet(item: $showing) { doc in LegalDocumentView(title: doc.rawValue) }
+        .sheet(item: $showing) { doc in LegalDocumentView(kind: doc) }
     }
 
     private func promise(_ icon: String, _ title: String, _ detail: String) -> some View {
@@ -91,33 +91,104 @@ struct TermsView: View {
 }
 
 struct LegalDocumentView: View {
-    let title: String
+    let kind: LegalDocuments.Kind
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Space.l) {
+                VStack(alignment: .leading, spacing: Theme.Space.m) {
                     if LegalDocuments.isPlaceholder {
-                        Label("Development placeholder — not the real \(title). Final legal text is a release dependency.",
+                        Label("Draft — pending legal review. Not the final \(kind.rawValue).",
                               systemImage: "exclamationmark.triangle.fill")
                             .font(Theme.Typeface.callout.weight(.semibold))
                             .foregroundStyle(Theme.Palette.amberText)
                             .crushCard(fill: Theme.Palette.amberSoft)
                     }
-                    Text("Version \(LegalDocuments.termsVersion)").font(Theme.Typeface.footnote).foregroundStyle(Theme.Palette.inkSoft)
-                    Text("""
-                    This placeholder outlines the topics the final document must cover: eligibility (USC students, 18+), \
-                    acceptable use, anonymous interest and mutual matching, Campus Space visibility, data collected and \
-                    retained, moderation and reporting, account deletion, and contact information.
-                    """)
-                    .font(Theme.Typeface.body)
+                    Text("Version \(kind.version)").font(Theme.Typeface.footnote).foregroundStyle(Theme.Palette.inkSoft)
+                    if let text = LegalDocuments.text(kind) {
+                        MarkdownBlocks(text: text)
+                    } else {
+                        Text("This document couldn't be loaded.").font(Theme.Typeface.body)
+                    }
                 }
                 .padding(Theme.Space.gutter)
             }
-            .navigationTitle(title)
+            .navigationTitle(kind.rawValue)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
+    }
+}
+
+/// Minimal block renderer for the bundled legal Markdown: headings, bullets, simple tables, paragraphs.
+/// Inline styling (bold, links) goes through AttributedString's Markdown parser.
+private struct MarkdownBlocks: View {
+    let text: String
+
+    private enum Block: Hashable {
+        case h1(String), h2(String), bullet(String), row([String]), paragraph(String)
+    }
+
+    private var blocks: [Block] {
+        var out: [Block] = []
+        var paragraph: [String] = []
+        func flush() { if !paragraph.isEmpty { out.append(.paragraph(paragraph.joined(separator: "\n"))); paragraph = [] } }
+        for raw in text.components(separatedBy: .newlines) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty { flush(); continue }
+            if line.hasPrefix("# ") { flush(); out.append(.h1(String(line.dropFirst(2)))) }
+            else if line.hasPrefix("## ") { flush(); out.append(.h2(String(line.dropFirst(3)))) }
+            else if line.hasPrefix("- ") { flush(); out.append(.bullet(String(line.dropFirst(2)))) }
+            else if line.hasPrefix("|") {
+                flush()
+                let cells = line.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+                if cells.allSatisfy({ $0.allSatisfy { $0 == "-" || $0 == ":" } }) {
+                    if case .row = out.last { out.removeLast() }   // drop the header row above the separator
+                } else {
+                    out.append(.row(cells))
+                }
+            } else { paragraph.append(line) }
+        }
+        flush()
+        return out
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
+            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                switch block {
+                case .h1(let s):
+                    Text(inline(s)).font(Theme.Typeface.title2).foregroundStyle(Theme.Palette.ink)
+                        .accessibilityAddTraits(.isHeader)
+                case .h2(let s):
+                    Text(inline(s)).font(Theme.Typeface.headline).foregroundStyle(Theme.Palette.ink)
+                        .padding(.top, Theme.Space.m)
+                        .accessibilityAddTraits(.isHeader)
+                case .bullet(let s):
+                    HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
+                        Text("•").accessibilityHidden(true)
+                        Text(inline(s))
+                    }
+                    .font(Theme.Typeface.body)
+                case .row(let cells):
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(inline(cells.first ?? "")).font(Theme.Typeface.subheadline.weight(.semibold))
+                        if cells.count > 1 { Text(inline(cells.dropFirst().joined(separator: " · "))).font(Theme.Typeface.subheadline) }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 2)
+                    .accessibilityElement(children: .combine)
+                case .paragraph(let s):
+                    Text(inline(s)).font(Theme.Typeface.body)
+                }
+            }
+        }
+        .foregroundStyle(Theme.Palette.ink)
+        .textSelection(.enabled)
+    }
+
+    private func inline(_ s: String) -> AttributedString {
+        (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(s)
     }
 }

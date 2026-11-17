@@ -20,8 +20,22 @@ enabled = true
 
 [auth]
 enabled = true
+# Local only. The app signs in with a typed 6-digit code, so no redirect URL is ever used.
 site_url = "http://127.0.0.1:3000"
 enable_signup = true
+# Short access tokens: Realtime keeps a channel authorized until the JWT expires, so this bounds how long a
+# revoked subscriber keeps receiving pokes. supabase-swift refreshes automatically.
+# PRODUCTION: set the same in Dashboard → Authentication → Sessions/JWT; this file only affects `supabase start`.
+jwt_expiry = 900
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+
+# Mirror these in Dashboard → Authentication → Rate Limits (not enforced in SQL).
+[auth.rate_limit]
+email_sent = 30           # per hour, project-wide: OTP emails
+token_verifications = 30  # per 5 min per IP: OTP verify attempts
+token_refresh = 150       # per 5 min per IP
+sign_in_sign_ups = 30     # per 5 min per IP
 
 [auth.email]
 # Passwordless email OTP (6-digit code). Verifying the code confirms the email,
@@ -31,6 +45,8 @@ enable_confirmations = true
 double_confirm_changes = true
 otp_length = 6
 otp_expiry = 600
+# Minimum gap between code emails to the same address.
+max_frequency = "60s"
 
 [functions.delete-account]
 verify_jwt = true

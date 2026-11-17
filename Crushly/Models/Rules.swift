@@ -75,9 +75,26 @@ nonisolated enum ConversationStarters {
 }
 
 nonisolated enum LegalDocuments {
-    /// Bump when the real documents change; users must re-accept.
-    static let termsVersion = "dev-2026-11"
-    static let privacyVersion = "dev-2026-11"
-    /// True until real legal text replaces the development placeholders.
-    static let isPlaceholder = true
+    /// Bump whenever terms.md / privacy.md change in substance; users must re-accept.
+    static let termsVersion = "2026-11-16-draft"
+    static let privacyVersion = "2026-11-16-draft"
+
+    enum Kind: String, Identifiable, Sendable {
+        case terms = "Terms of Service", privacy = "Privacy Policy"
+        var id: String { rawValue }
+        var resource: String { self == .terms ? "terms" : "privacy" }
+        var version: String { self == .terms ? LegalDocuments.termsVersion : LegalDocuments.privacyVersion }
+    }
+
+    /// The bundled Markdown text (Resources/Legal/*.md), or nil if it's missing from the build.
+    static func text(_ kind: Kind, in bundle: Bundle = .main) -> String? {
+        guard let url = bundle.url(forResource: kind.resource, withExtension: "md") else { return nil }
+        return try? String(contentsOf: url, encoding: .utf8)
+    }
+
+    /// True while either document is missing or still has `[[FILL-IN]]` markers awaiting the operator and legal
+    /// review. Shown as a warning on the document screens; must be false before launch.
+    static var isPlaceholder: Bool {
+        [Kind.terms, .privacy].contains { text($0).map { $0.contains("[[") } ?? true }
+    }
 }

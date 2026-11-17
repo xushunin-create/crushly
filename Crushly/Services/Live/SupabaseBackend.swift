@@ -13,7 +13,10 @@ final class SupabaseBackend: CrushlyBackend {
         client = SupabaseClient(
             supabaseURL: url,
             supabaseKey: anonKey,
-            options: SupabaseClientOptions(auth: .init(emitLocalSessionAsInitialSession: true))
+            options: SupabaseClientOptions(auth: .init(
+                storage: SessionKeychainStorage(),
+                emitLocalSessionAsInitialSession: true
+            ))
         )
     }
 
@@ -81,21 +84,6 @@ final class SupabaseBackend: CrushlyBackend {
             throw CrushlyError.invalidVerificationCode
         }
     }
-
-    #if DEBUG
-    /// DEV ONLY — remove before launch. Signs in with a fixed password instead of an emailed code.
-    /// Never signs up (that would send a confirmation email): create the account first with
-    /// supabase/dev/create_dev_user.sql.
-    private static let devPassword = "crushly-dev-bypass-password"
-
-    func devSignIn(email: String) async throws {
-        do {
-            _ = try await client.auth.signIn(email: email, password: Self.devPassword)
-        } catch {
-            throw CrushlyError.unknown("dev account \(email) isn't set up. Run supabase/dev/create_dev_user.sql in the Supabase SQL Editor")
-        }
-    }
-    #endif
 
     func signOut() async throws {
         await stopPokes()

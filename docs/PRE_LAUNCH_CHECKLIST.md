@@ -5,6 +5,9 @@ Design rationale: [CAMPUS_SPACES_DESIGN.md](CAMPUS_SPACES_DESIGN.md). Server con
 
 ## 1. Database settings (Supabase SQL Editor)
 
+Run [`supabase/ops/verify_production.sql`](../supabase/ops/verify_production.sql) (read-only) first and again before
+launch: it checks most of §1, the dev account, enabled zones and the photo bucket in one table of PASS/FAIL/CHECK rows.
+
 - [ ] **`allow_draft_spaces` is `false`.** Drafts must never be usable in production:
   ```sql
   update public.app_settings set value = 'false' where key = 'allow_draft_spaces';
@@ -35,8 +38,12 @@ All three shipped zones are **drafts** traced from OpenStreetMap outlines. None 
 - [ ] For each zone (`upc-alumni-park-tommy-trojan`, `upc-mccarthy-quad`, `usc-village-great-lawn`): walk the
   perimeter and the middle with a dev build, at different times of day, near building edges and under trees. Record
   inside / outside / uncertain verdicts and the reported accuracy.
-  - **Gap:** there is no on-screen field-validation overlay yet (design §8.3 step 3). Build one (DEBUG only, on-screen
-    only, never logged) before the walk, or use the GPX routes in `Config/Locations/` to rehearse first.
+  - Use the DEBUG **field-validation overlay** (Spaces tab → "Field validation overlay"): it classifies every fix
+    against all enabled zones (drafts included), shows accuracy, fix age, coordinates and distance to each boundary,
+    and lets you tap Inside / Edge / Outside to tally ground truth vs verdict. **False INSIDE must be 0.** In-memory
+    only; cleared when closed. Rehearse first with the GPX routes in `Config/Locations/`. The dev project needs
+    `allow_draft_spaces = true` (or a DEBUG build's bundled drafts) for the engine to use drafts; the overlay itself
+    ignores that setting.
 - [ ] Adjust each polygon, keeping a ≥ 30 m gap between zones and stopping short of building entrances, residence-hall
   courtyards and health/counseling locations.
 - [ ] **Bump `boundary_version`** for every changed zone (consent is tied to the version), then set
@@ -50,11 +57,12 @@ All three shipped zones are **drafts** traced from OpenStreetMap outlines. None 
 
 - [ ] **Realtime → Settings: "Allow public access" OFF** (only private channels). *(Done by the owner on 2026-11-16;
   re-check after any project migration.)*
-- [ ] **Auth → JWT expiry short** (for example 10–15 minutes). Realtime keeps a channel authorized until the JWT
+- [ ] **Auth → JWT expiry short** (900 s, matching `supabase/config.toml`; also turn on refresh-token rotation). Realtime keeps a channel authorized until the JWT
   expires, so shorter tokens shorten how long a revoked subscriber can keep receiving content-free pokes.
 - [ ] **Custom SMTP** configured (Authentication → SMTP) on the owned domain, and the Magic Link template includes
   `{{ .Token }}` (6-digit code).
-- [ ] **Remove the dev sign-in bypass** (`devSignIn`, `supabase/dev/create_dev_user.sql`, the dev account) once SMTP works.
+- [ ] **Dev sign-in bypass:** removed from the app and `create_dev_user.sql` deleted (2026-11-16). Once SMTP works,
+  delete the server-side account with [`supabase/ops/remove_dev_account.sql`](../supabase/ops/remove_dev_account.sql).
 - [ ] **APNs:** auth key (.p8), the Push Notifications capability in Xcode, and the `push-dispatch` secrets
   ([NOTIFICATIONS.md](NOTIFICATIONS.md)).
 - [ ] **Redeploy edge functions** from the current source: `push-dispatch` (Verify JWT off; copy is now "You have a new
@@ -65,8 +73,8 @@ All three shipped zones are **drafts** traced from OpenStreetMap outlines. None 
 
 - [ ] `Crushly/Resources/Secrets.plist` contains only the project URL and the **anon/publishable** key. Never the
   service-role key.
-- [ ] Confirm the auth session's Keychain accessibility class in supabase-swift (design §6.5 asks for
-  `afterFirstUnlockThisDeviceOnly`); change the storage if it isn't.
+- [x] Auth session Keychain class is `afterFirstUnlockThisDeviceOnly` (design §6.5): supabase-swift's default is
+  `afterFirstUnlock`, so `SessionKeychainStorage` replaces it and upgrades existing items on first read (2026-11-16).
 - [ ] Release build runs in live mode (no DEMO badge); the demo fixture and simulated location are unreachable without
   `-CrushlyDemo` or missing secrets.
 - [ ] App Store privacy labels: precise location (used on device, not collected or linked), messages (collected,
@@ -74,7 +82,10 @@ All three shipped zones are **drafts** traced from OpenStreetMap outlines. None 
 
 ## 5. Legal and operations
 
-- [ ] Real Terms of Service and Privacy Policy replace the development placeholders (`LegalDocuments.isPlaceholder`).
+- [ ] Real Terms of Service and Privacy Policy. **Drafts** are in `Crushly/Resources/Legal/terms.md` and `privacy.md`:
+  replace every `[[FILL-IN]]` (operator name, address, contact email, email provider, governing law, report/analytics/
+  backup retention), have a lawyer review, then bump `LegalDocuments.termsVersion`/`privacyVersion`.
+  `LegalDocuments.isPlaceholder` (and the in-app "Draft" banner) turns off automatically once no `[[` remains.
   The privacy policy must say: location is evaluated on the device; the server receives only a space id with a 60 s
   lease; messages are **not end-to-end encrypted** and the operator can technically read them; report evidence is kept
   90 days; deleted data persists in backups until they age out; people matching in a space can infer co-presence.

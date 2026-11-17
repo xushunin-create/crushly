@@ -92,16 +92,6 @@ struct SignInView: View {
                 .buttonStyle(.crush)
                 .accessibilityIdentifier("signin.sendCode")
                 .disabled(!state.rules.isAllowedEmail(email))
-
-            #if DEBUG
-            // DEV ONLY — skips the emailed code. Remove before launch.
-            AsyncButton { await state.perform { try await state.devSignIn(email: email) } } label: {
-                Text(state.rules.isAllowedEmail(email) ? "Dev: sign in as this email" : "Dev: skip sign-in")
-            }
-            .buttonStyle(.bordered)
-            .tint(Theme.Palette.plum)
-            .accessibilityIdentifier("signin.devSkip")
-            #endif
         }
     }
 

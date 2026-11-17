@@ -151,7 +151,8 @@ struct ParticipationFlowTests {
         await state.signOut()
         #expect(state.phase == .signedOut)
         #expect(!location.updating && !location.backgroundActive)
-        try await demo.devSignIn(email: "tommy@usc.edu")
+        try await demo.requestCode(email: "tommy@usc.edu")
+        try await demo.verifyCode(email: "tommy@usc.edu", code: DemoWorld.demoCode)
         #expect(try await demo.myParticipation().session == nil)
     }
 
@@ -159,7 +160,8 @@ struct ParticipationFlowTests {
         let (state, demo, _) = await participating()
         try await state.deleteAccount()
         #expect(state.phase == .signedOut)
-        try await demo.devSignIn(email: "tommy@usc.edu")
+        try await demo.requestCode(email: "tommy@usc.edu")
+        try await demo.verifyCode(email: "tommy@usc.edu", code: DemoWorld.demoCode)
         #expect(try await demo.myParticipation().session == nil)
     }
 

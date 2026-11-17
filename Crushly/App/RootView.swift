@@ -31,6 +31,11 @@ struct RootView: View {
                     }
             }
         }
+        #if DEBUG
+        .overlay(alignment: .top) {
+            if FieldValidationRecorder.shared.isOn, state.phase == .ready { FieldValidationOverlay() }
+        }
+        #endif
         .overlay(alignment: .bottom) {
             if state.isOffline {
                 Label("Offline — retrying", systemImage: "wifi.slash")

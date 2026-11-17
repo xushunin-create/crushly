@@ -59,7 +59,7 @@ struct MeView: View {
         .background(Theme.Palette.paper)
         .foregroundStyle(Theme.Palette.ink, Theme.Palette.inkSoft)   // section headers/footers readable on paper
         .navigationTitle("Me")
-        .sheet(item: $legal) { doc in LegalDocumentView(title: doc.rawValue) }
+        .sheet(item: $legal) { doc in LegalDocumentView(kind: doc) }
         .onAppear { verifiedOnly = state.account.verifiedOnlyDiscovery }
     }
 

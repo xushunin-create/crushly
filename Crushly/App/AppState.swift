@@ -430,6 +430,9 @@ final class AppState {
         case .sample(let sample):
             let wasUnverified: Bool = { if case .unverified = engine.state { return true }; return false }()
             await handle(engine.ingest(sample))
+            #if DEBUG
+            FieldValidationRecorder.shared.record(sample, zones: zones, config: engine.config, state: engine.state)
+            #endif
             if case .participating = engine.state {
                 // Back to verified before the lease lapsed: renew now. Otherwise samples keep renewals going even
                 // when the timer is throttled in the background.
@@ -1138,19 +1141,6 @@ final class AppState {
                                      code: code.trimmingCharacters(in: .whitespaces))
         await reloadAccount()
     }
-
-    #if DEBUG
-    /// DEV ONLY — fixed account used when the dev button is tapped with no email typed.
-    static let devEmail = "crushly-dev@usc.edu"
-
-    /// DEV ONLY — skips email code verification. Remove before launch.
-    func devSignIn(email: String?) async throws {
-        let typed = (email ?? "").lowercased().trimmingCharacters(in: .whitespaces)
-        let target = rules.isAllowedEmail(typed) ? typed : Self.devEmail
-        try await backend.devSignIn(email: target)
-        await reloadAccount()
-    }
-    #endif
 
     func acceptTerms() async throws {
         try await backend.acceptTerms(termsVersion: LegalDocuments.termsVersion,
