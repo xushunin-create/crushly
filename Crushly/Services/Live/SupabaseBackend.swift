@@ -176,7 +176,7 @@ final class SupabaseBackend: CrushlyBackend {
         do {
             // RLS returns only enabled spaces that are field-validated (or drafts when allow_draft_spaces is on).
             let rows: [SpaceZone] = try await client.from("campus_spaces")
-                .select("slug,name,subtitle,boundary,boundary_version,validation_status,enabled,sort_order")
+                .select("slug,name,subtitle,boundary,boundary_version,validation_status,enabled,sort_order,membership_rule,max_accuracy_m")
                 .order("sort_order").execute().value
             return rows.sorted { ($0.sortOrder, $0.slug) < ($1.sortOrder, $1.slug) }
         } catch {

@@ -310,10 +310,75 @@ struct MembershipEngineTests {
     }
 }
 
+/// Building-sized zone using the `point` rule: 50 m square at (0,0)–(50,50) with a 40 m accuracy limit.
+private func building(_ slug: String = "hall") -> SpaceZone {
+    var z = zone(slug, [square(0, 0, 50, 50)])
+    z.membershipRule = .point
+    z.maxAccuracyMeters = 40
+    return z
+}
+
+struct PointRuleTests {
+    private func engine(_ zones: [SpaceZone]) -> MembershipEngine {
+        var e = MembershipEngine(zones: zones, makeVisitID: VisitIDs().next)
+        _ = e.setUnavailable(nil)
+        return e
+    }
+
+    @Test func indoorFixesEnterABuilding() {
+        var e = engine([building()])
+        // 25 m accuracy, centre of a 50 m building: the circle rule would never allow this.
+        #expect(e.classify(fix(25, 25, at: 0, accuracy: 25)) == .inside(slug: "hall", depth: e.zones[0].shape.distanceToBoundary(from: at(25, 25))))
+        _ = e.ingest(fix(25, 25, at: 0, accuracy: 35))
+        let effects = e.ingest(fix(26, 25, at: 6, accuracy: 35))
+        #expect(effects.count == 1, "35 m is within the building's 40 m limit")
+        let consented = e.consent(visit: e.state.visit!)
+        #expect(consented)
+        #expect(e.openingEvidence(now: t0.addingTimeInterval(8)) != nil, "evidence uses the zone's own limit")
+    }
+
+    @Test func circleZonesKeepTheStrictRule() {
+        let e = engine([zoneA])
+        #expect(e.classify(fix(50, 50, at: 0, accuracy: 35)) == .uncertain, "35 m is over the global 30 m limit")
+        #expect(e.classify(fix(10, 50, at: 0, accuracy: 10)) == .uncertain, "circle crosses the edge")
+    }
+
+    @Test func overTheBuildingLimitNeverEnters() {
+        let e = engine([building()])
+        #expect(e.classify(fix(25, 25, at: 0, accuracy: 45)) == .uncertain)
+    }
+
+    @Test func justOutsideTheWallsLeansOutThenExits() {
+        let e = engine([building()])
+        #expect(e.classify(fix(60, 25, at: 0, accuracy: 10)) == .outsideLeaning, "10 m outside with a 15 m radius")
+        #expect(e.classify(fix(100, 25, at: 0, accuracy: 10)) == .outside)
+    }
+
+    @Test func coarseFixNearAStrictZoneIsNeverAnExit() {
+        // 35 m fix: fine for the building, too coarse for zone A, and its circle touches zone A.
+        let e = engine([building(), zone("a", [square(100, 0, 200, 100)])])
+        #expect(e.classify(fix(80, 25, at: 0, accuracy: 35)) == .uncertain)
+    }
+
+    @Test func stationaryReuseInABuildingNeedsOnlyTheMargin() {
+        var e = engine([building()])
+        _ = e.ingest(fix(25, 25, at: 0, accuracy: 30))
+        _ = e.ingest(fix(25, 26, at: 6, accuracy: 30))
+        let consented = e.consent(visit: e.state.visit!)
+        #expect(consented)
+        e.setStationary(true)
+        #expect(e.evidence(now: t0.addingTimeInterval(6 + 120))?.stationary == true, "≥ 5 m inside the walls")
+        _ = e.ingest(fix(3, 25, at: 10, accuracy: 30))   // 3 m inside: still inside, but too close to re-cite
+        e.setStationary(true)
+        #expect(e.evidence(now: t0.addingTimeInterval(10 + 60)) == nil)
+    }
+}
+
 struct SpaceZoneTests {
     @Test func bundledZonesAreValidDraftsAndWellSeparated() throws {
         let zones = SpaceZoneCatalog.bundled()
-        #expect(zones.map(\.slug) == ["upc-alumni-park-tommy-trojan", "upc-mccarthy-quad", "usc-village-great-lawn"])
+        #expect(zones.map(\.slug) == ["upc-alumni-park-tommy-trojan", "upc-mccarthy-quad", "usc-village-great-lawn",
+                                     "upc-iovine-young-hall"])
         for z in zones {
             #expect(z.validationStatus == .draft, "\(z.slug) has not been walked; it must stay a draft")
             #expect(!z.isUsable(allowDrafts: false), "drafts are unusable without allowDrafts")
@@ -326,6 +391,16 @@ struct SpaceZoneTests {
         }
         let center = try #require(zones.first { $0.slug == "upc-alumni-park-tommy-trojan" })
         #expect(center.shape.rings.count == 2, "Alumni Park and Hahn Plaza are one zone")
+        for z in zones where z.slug != "upc-iovine-young-hall" {
+            #expect(z.membershipRule == .circle && z.maxAccuracyMeters == nil, "\(z.slug) is open-air: strict defaults")
+        }
+        let iyh = try #require(zones.first { $0.slug == "upc-iovine-young-hall" })
+        #expect(iyh.membershipRule == .point && iyh.maxAccuracyMeters == 40, "IYH is a building: point rule, 40 m")
+    }
+
+    @Test func rejectsOutOfRangeAccuracyOverride() {
+        let json = #"[{"slug":"x-y-z","name":"X","boundary":{"type":"Polygon","coordinates":[[[0,0],[0,1],[1,1],[1,0],[0,0]]]},"boundary_version":1,"validation_status":"draft","enabled":true,"max_accuracy_m":500}]"#
+        #expect(throws: (any Error).self) { try SpaceZoneCatalog.decode(Data(json.utf8)) }
     }
 
     @Test func rejectsMalformedGeometry() {

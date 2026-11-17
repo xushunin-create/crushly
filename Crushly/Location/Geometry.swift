@@ -56,6 +56,12 @@ nonisolated struct ZoneShape: Equatable, Sendable {
         return nearest < radius ? .straddling(centerInside: false) : .outside
     }
 
+    /// Whether the point itself lies inside the zone (any of its polygons). Used by the `point` membership rule.
+    func contains(_ point: GeoPoint) -> Bool {
+        let projection = LocalProjection(origin: point)
+        return rings.contains { Self.contains($0.map(projection.project), Vec2(x: 0, y: 0)) }
+    }
+
     /// Distance in metres from the point to the nearest boundary of the zone (∞ for an empty zone).
     func distanceToBoundary(from point: GeoPoint) -> Double {
         let projection = LocalProjection(origin: point)

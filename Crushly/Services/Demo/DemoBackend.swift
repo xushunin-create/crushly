@@ -311,12 +311,13 @@ final class DemoBackend: CrushlyBackend {
     }
 
     /// `check_evidence`: plausibility only. The demo can't verify location any more than the server can.
-    private func checkEvidence(_ e: LocationEvidence, previousFixMs: Int64?, allowStationary: Bool) throws -> Int64 {
+    private func checkEvidence(_ e: LocationEvidence, in zone: SpaceZone?, previousFixMs: Int64?, allowStationary: Bool) throws -> Int64 {
         let ts = Int64((e.fixTimestamp.timeIntervalSince1970 * 1000).rounded())
         let age = Int64((e.fixAge * 1000).rounded())
         guard age >= 0, e.horizontalAccuracy > 0, e.horizontalAccuracy.isFinite else { throw CrushlyError.invalidInput("Bad evidence.") }
         if e.stationary && !allowStationary { throw CrushlyError.staleEvidence }
-        if e.horizontalAccuracy > rules.evidenceMaxAccuracyMeters { throw CrushlyError.insufficientAccuracy }
+        let maxAccuracy = zone?.maxAccuracy(default: rules.evidenceMaxAccuracyMeters) ?? rules.evidenceMaxAccuracyMeters
+        if e.horizontalAccuracy > maxAccuracy { throw CrushlyError.insufficientAccuracy }
         let maxAge = e.stationary ? rules.evidenceStationaryMaxFixAgeSeconds : rules.evidenceMaxFixAgeSeconds
         if Double(age) > maxAge * 1000 { throw CrushlyError.staleEvidence }
         if let previousFixMs, (!e.stationary && ts <= previousFixMs) || (e.stationary && ts < previousFixMs) {
@@ -508,7 +509,7 @@ final class DemoBackend: CrushlyBackend {
             throw CrushlyError.spaceUnavailable
         }
         if zone.boundaryVersion != boundaryVersion { throw CrushlyError.boundaryOutdated }
-        let fix = try checkEvidence(evidence, previousFixMs: nil, allowStationary: false)
+        let fix = try checkEvidence(evidence, in: zone, previousFixMs: nil, allowStationary: false)
 
         // Never transfer consent: whatever existed before ends now, interests included.
         if let old = mySession { purgeSession(old.id) }
@@ -539,7 +540,7 @@ final class DemoBackend: CrushlyBackend {
         guard var s = mySession, s.id == sessionID, s.leaseExpiresAt > now() else { throw CrushlyError.sessionExpired }
         if isPaused(myID) { throw CrushlyError.matchingPaused }
         if seq <= s.lastSeq { throw CrushlyError.staleRequest }
-        let fix = try checkEvidence(evidence, previousFixMs: s.lastFixMs, allowStationary: true)
+        let fix = try checkEvidence(evidence, in: zones.first { $0.slug == s.slug }, previousFixMs: s.lastFixMs, allowStationary: true)
         s.leaseExpiresAt = now().addingTimeInterval(TimeInterval(rules.participationLeaseSeconds))
         s.lastSeq = seq
         s.lastFixMs = fix

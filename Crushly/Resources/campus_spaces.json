@@ -415,5 +415,68 @@
     "text": "USC Village Piazza not included: not mapped by name in OpenStreetMap; borders residential colleges. Trace from the official diagram (Village Plaza) and validate before adding."
    }
   ]
+ },
+ {
+  "slug": "upc-iovine-young-hall",
+  "name": "Iovine and Young Hall",
+  "subtitle": "USC Iovine and Young Academy",
+  "boundary": {
+   "type": "Polygon",
+   "coordinates": [
+    [
+     [
+      -118.2886529,
+      34.0186619
+     ],
+     [
+      -118.2885243,
+      34.0186017
+     ],
+     [
+      -118.2885214,
+      34.0184359
+     ],
+     [
+      -118.2881906,
+      34.0184346
+     ],
+     [
+      -118.2881552,
+      34.0184387
+     ],
+     [
+      -118.288041,
+      34.0186172
+     ],
+     [
+      -118.2885436,
+      34.0188373
+     ],
+     [
+      -118.2886529,
+      34.0186619
+     ]
+    ]
+   ]
+  },
+  "boundary_version": 1,
+  "validation_status": "draft",
+  "enabled": true,
+  "sort_order": 40,
+  "membership_rule": "point",
+  "max_accuracy_m": 40,
+  "source_refs": [
+   {
+    "kind": "openstreetmap",
+    "way": 727901784,
+    "url": "https://www.openstreetmap.org/way/727901784",
+    "license": "ODbL, \u00a9 OpenStreetMap contributors",
+    "retrieved": "2026-11-17"
+   },
+   {
+    "kind": "note",
+    "text": "Indoor zone: building footprint (3 levels). Uses membership_rule 'point' and max_accuracy_m 40 because indoor fixes are too coarse for the whole-circle rule. OSM tags it 'USC Iovine and Young Academy, 3738 Watt Way'; confirm on site that this is the right building and outline."
+   }
+  ]
  }
 ]

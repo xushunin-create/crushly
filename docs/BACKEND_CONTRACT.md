@@ -18,7 +18,7 @@ raised as `P0001` with the message set to an error code from §6.
 |---|---|---|
 | `allowed_email_domains` | `["usc.edu"]` | Sign-up domain allow-list |
 | `participation_lease_seconds` | `60` | Hard cap on a participation lease |
-| `evidence_max_accuracy_m` | `30` | Worst acceptable horizontal accuracy |
+| `evidence_max_accuracy_m` | `30` | Worst acceptable horizontal accuracy (a space's `max_accuracy_m` overrides it) |
 | `evidence_max_fix_age_seconds` | `15` | Max age of a moving fix when sent |
 | `evidence_stationary_max_fix_age_seconds` | `300` | Max age of a re-cited fix while Core Location reports stationary |
 | `allow_draft_spaces` | `false` | Dev/staging only: allow `draft` spaces |
@@ -40,7 +40,7 @@ raised as `P0001` with the message set to an error code from §6.
 |---|---|---|
 | `profiles` | Public profile fields (unchanged) | Owner read/write (server-only columns guarded) |
 | `profile_private` | Terms/age confirmation, `verified_only_discovery`, matching prefs: `match_gender` (`woman`/`man`/`nonbinary`), `show_me text[]`, `age_min`, `age_max` | Owner read. Prefs written only by `update_match_preferences` |
-| `campus_spaces` | `slug` (stable id), `name`, `subtitle`, `boundary` (GeoJSON Polygon), `boundary_version`, `source_refs`, `validation_status` (`draft`/`field_validated`), `enabled`, `sort_order` | Read where `enabled` and (`field_validated` or `allow_draft_spaces`) |
+| `campus_spaces` | `slug` (stable id), `name`, `subtitle`, `boundary` (GeoJSON Polygon), `boundary_version`, `source_refs`, `validation_status` (`draft`/`field_validated`), `enabled`, `sort_order`, `membership_rule` (`circle` default / `point` for buildings), `max_accuracy_m` (per-space override of `evidence_max_accuracy_m`, null = global, 5–100; enforced by `open_participation`/`renew_participation`) | Read where `enabled` and (`field_validated` or `allow_draft_spaces`) |
 | `participation_state` | `consent_epoch`, `matching_paused`, `paused_until` | None (via RPC) |
 | `participation_sessions` | One row per user at most: space, boundary version, epoch, lease, last seq/fix, `interests_sent`. **Deleted when it ends.** | None |
 | `discovery_exposures` | (viewer session, target session) pairs that discovery returned. Cascades with sessions | None |

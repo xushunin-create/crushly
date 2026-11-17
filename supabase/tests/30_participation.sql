@@ -150,8 +150,14 @@ do $$
 declare a uuid;
 begin
   perform tests.assert((select count(*) from public.campus_spaces
-                         where slug in ('upc-alumni-park-tommy-trojan', 'upc-mccarthy-quad', 'usc-village-great-lawn')) = 3,
-                       'three draft USC zones are seeded');
+                         where slug in ('upc-alumni-park-tommy-trojan', 'upc-mccarthy-quad', 'usc-village-great-lawn',
+                                        'upc-iovine-young-hall')) = 4,
+                       'four draft USC zones are seeded');
+  perform tests.assert((select count(*) from public.campus_spaces where membership_rule = 'circle' and max_accuracy_m is null
+                         and slug in ('upc-alumni-park-tommy-trojan', 'upc-mccarthy-quad', 'usc-village-great-lawn')) = 3,
+                       'open-air zones keep the strict defaults');
+  perform tests.assert((select membership_rule = 'point' and max_accuracy_m = 40 from public.campus_spaces
+                         where slug = 'upc-iovine-young-hall'), 'IYH is an indoor point-rule zone with a 40 m limit');
   perform tests.assert((select bool_and(validation_status = 'draft') from public.campus_spaces where slug like 'u%c-%'),
                        'every seeded USC zone is still a draft');
   perform tests.assert((select boundary->>'type' from public.campus_spaces where slug = 'upc-alumni-park-tommy-trojan') = 'MultiPolygon',
@@ -179,5 +185,35 @@ begin
   perform tests.assert(public.my_participation()->'session'->>'space_slug' = 'draft-zone', 'drafts usable when allowed');
   perform tests.logout();
   update public.app_settings set value = 'false' where key = 'allow_draft_spaces';
+end $$;
+
+-- Per-space accuracy limits (indoor zones). The global limit is 30 m.
+do $$
+declare a uuid; st jsonb; sess uuid;
+begin
+  perform tests.make_space('indoor-hall');
+  update public.campus_spaces set membership_rule = 'point', max_accuracy_m = 40 where slug = 'indoor-hall';
+  perform tests.expect_sqlstate($q$update public.campus_spaces set max_accuracy_m = 500 where slug = 'indoor-hall'$q$,
+                                '23514', 'accuracy override is bounded');
+  perform tests.expect_sqlstate($q$update public.campus_spaces set membership_rule = 'nearby' where slug = 'indoor-hall'$q$,
+                                '23514', 'unknown membership rule rejected');
+
+  a := tests.make_user('indoor');
+  perform tests.login(a);
+  st := public.my_participation();
+  perform tests.expect_error(format($q$select public.open_participation('quad', 1, %s, gen_random_uuid(), tests.evidence(accuracy => 35))$q$,
+                                    st->>'consent_epoch'), 'insufficient_accuracy', 'open-air space keeps the 30 m limit');
+  perform tests.expect_error(format($q$select public.open_participation('indoor-hall', 1, %s, gen_random_uuid(), tests.evidence(accuracy => 45))$q$,
+                                    st->>'consent_epoch'), 'insufficient_accuracy', 'indoor space rejects fixes over its own limit');
+  sess := (public.open_participation('indoor-hall', 1, (st->>'consent_epoch')::bigint, gen_random_uuid(),
+                                     tests.evidence(accuracy => 35))->>'session_id')::uuid;
+  perform tests.assert(sess is not null, 'indoor space accepts a 35 m fix');
+  perform public.renew_participation(sess, 1, tests.evidence(accuracy => 38));
+  perform tests.assert(true, 'renewal in an indoor space uses its own limit');
+  perform tests.expect_error(format($q$select public.renew_participation(%L, 2, tests.evidence(accuracy => 41))$q$, sess),
+                             'insufficient_accuracy', 'renewal still bounded by the space limit');
+  perform tests.logout();
+  perform tests.assert(not has_function_privilege('authenticated', 'public.check_evidence(jsonb, bigint, boolean, int)', 'execute'),
+                       'clients cannot call the evidence helper');
 end $$;
 rollback;

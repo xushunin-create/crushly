@@ -85,6 +85,21 @@ Implemented in `Crushly/Location/Geometry.swift`, `MembershipEngine.swift`, `Loc
 - **Outside** means the accuracy circle is entirely outside the polygon.
 - Anything else (straddling the edge, or matching more than one space) is **uncertain**. The engine never picks a space arbitrarily.
 
+### 3.1a Indoor zones (`membership_rule = 'point'`)
+
+Added 2026-11-17 for Iovine and Young Hall. A building is too small for the rule above: indoor fixes are typically
+20–65 m, and inside a ~50 m building a fix would need ~15 m accuracy at the exact centre. So a zone can opt into:
+
+- `membership_rule = 'point'`: **inside** if the fix's own position is inside the outline (the accuracy circle may
+  cross the walls). **Outside** if the position is outside by at least accuracy + margin; in between leans outside
+  (two in a row is an exit, as for circle zones).
+- `max_accuracy_m`: a per-zone accuracy limit (IYH: 40 m), enforced on device and by the server's evidence check.
+- Stationary re-citing needs the position to be at least `safety_margin_m` inside, not two radii.
+- A fix too coarse for a zone never enters it and never counts as an exit from it.
+
+Tradeoff, accepted by product decision: someone just outside the walls can count as inside when their GPS errs inward,
+and a 40 m fix says less about where someone is. Open-air zones keep the strict circle rule and the 30 m limit.
+
 ### 3.2 States
 
 ```
@@ -319,6 +334,7 @@ by `supabase/migrations/20261117000000_draft_usc_spaces.sql` (generated from the
 | `upc-alumni-park-tommy-trojan` | Alumni Park & Tommy Trojan | Alumni Park (OSM way 154906676) + Hahn Plaza (442277347), MultiPolygon | The two outlines touch (0 m gap). The Tommy Trojan statue falls inside the Hahn Plaza outline |
 | `upc-mccarthy-quad` | McCarthy Quad | OSM way 154906727 (~78 × 93 m) | 41 m from the Alumni Park outline |
 | `usc-village-great-lawn` | Great Lawn at USC Village | OSM way 727000078 (~97 × 117 m) | |
+| `upc-iovine-young-hall` | Iovine and Young Hall | OSM way 727901784, building footprint (~56 × 45 m, 3 levels) | Indoor zone (§3.1a): `point` rule, 40 m limit. Added 2026-11-17 by `20261120000000_indoor_zones_iyh.sql`. OSM labels it "USC Iovine and Young Academy, 3738 Watt Way"; confirm the building and outline on site |
 
 Left out, and why:
 - **Founders Park.** OSM tags E.F. Hutton Park with `old_name = Founders Park`, but USC lists Founders Park and E.F. Hutton Park

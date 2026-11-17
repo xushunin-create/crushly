@@ -10,6 +10,15 @@ nonisolated struct SpaceZone: Identifiable, Equatable, Sendable {
         case fieldValidated = "field_validated"
     }
 
+    /// How a fix is judged against this zone (docs/CAMPUS_SPACES_DESIGN.md §3.1a).
+    enum MembershipRule: String, Codable, Sendable {
+        /// Default, for open-air spaces: the whole accuracy circle (plus margin) must be inside.
+        case circle
+        /// For buildings, where indoor fixes are too coarse for `circle`: the fix's own position must be inside.
+        /// Weaker: someone just outside the walls can count when their GPS errs inward.
+        case point
+    }
+
     var slug: String
     var name: String
     var subtitle: String?
@@ -18,8 +27,14 @@ nonisolated struct SpaceZone: Identifiable, Equatable, Sendable {
     var validationStatus: ValidationStatus
     var enabled: Bool
     var sortOrder: Int
+    var membershipRule: MembershipRule = .circle
+    /// Per-zone limit on fix accuracy (metres). nil = the global `evidence_max_accuracy_m`. The server enforces the same.
+    var maxAccuracyMeters: Double? = nil
 
     var id: String { slug }
+
+    /// The accuracy limit that applies in this zone.
+    func maxAccuracy(default globalLimit: Double) -> Double { maxAccuracyMeters ?? globalLimit }
 
     /// Whether this build may use the zone at all. Drafts are allowed only when the server (or a DEBUG build's
     /// bundled config) says so. The server re-checks this on every participation request.
@@ -35,6 +50,8 @@ extension SpaceZone: Decodable {
         case validationStatus = "validation_status"
         case enabled
         case sortOrder = "sort_order"
+        case membershipRule = "membership_rule"
+        case maxAccuracyMeters = "max_accuracy_m"
     }
 
     init(from decoder: Decoder) throws {
@@ -47,6 +64,11 @@ extension SpaceZone: Decodable {
         validationStatus = try c.decode(ValidationStatus.self, forKey: .validationStatus)
         enabled = try c.decode(Bool.self, forKey: .enabled)
         sortOrder = try c.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
+        membershipRule = try c.decodeIfPresent(MembershipRule.self, forKey: .membershipRule) ?? .circle
+        maxAccuracyMeters = try c.decodeIfPresent(Double.self, forKey: .maxAccuracyMeters)
+        if let m = maxAccuracyMeters, !(5...100).contains(m) {
+            throw DecodingError.dataCorruptedError(forKey: .maxAccuracyMeters, in: c, debugDescription: "max_accuracy_m out of range")
+        }
     }
 }
 

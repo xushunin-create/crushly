@@ -35,7 +35,8 @@ nonisolated struct LocationEvidence: Equatable, Sendable {
 }
 
 nonisolated struct MembershipConfig: Equatable, Sendable {
-    /// Fixes worse than this are never evidence (server enforces the same value).
+    /// Fixes worse than this are never evidence (server enforces the same value). A zone may override it
+    /// (`SpaceZone.maxAccuracyMeters`).
     var maxAccuracy: Double = 30
     /// Extra metres added to the accuracy radius before deciding inside/outside.
     var safetyMargin: Double = 5
@@ -234,15 +235,14 @@ nonisolated struct MembershipEngine: Sendable {
 
     /// Evidence for a renewal right now, or nil if membership isn't currently verified (then don't renew).
     func evidence(now: Date) -> LocationEvidence? {
-        guard case .participating = state, let q = lastQualifying else { return nil }
+        guard case .participating(let slug, _) = state, let q = lastQualifying else { return nil }
         let age = now.timeIntervalSince(q.sample.timestamp)
-        guard age >= 0, q.sample.horizontalAccuracy <= config.maxAccuracy else { return nil }
+        guard age >= 0, q.sample.horizontalAccuracy <= accuracyLimit(slug) else { return nil }
         if age <= config.maxEvidenceAge {
             return LocationEvidence(fixTimestamp: q.sample.timestamp, fixAge: age,
                                     horizontalAccuracy: q.sample.horizontalAccuracy, stationary: false)
         }
-        let radius = q.sample.horizontalAccuracy + config.safetyMargin
-        if stationaryNow, age <= config.stationaryReuseMax, q.depth >= config.stationaryDepthFactor * radius {
+        if stationaryNow, age <= config.stationaryReuseMax, q.depth >= requiredStationaryDepth(slug, accuracy: q.sample.horizontalAccuracy) {
             return LocationEvidence(fixTimestamp: q.sample.timestamp, fixAge: age,
                                     horizontalAccuracy: q.sample.horizontalAccuracy, stationary: true)
         }
@@ -251,11 +251,24 @@ nonisolated struct MembershipEngine: Sendable {
 
     /// Evidence for the initial "open" request: must be a fresh, non-stationary qualifying fix.
     func openingEvidence(now: Date) -> LocationEvidence? {
-        guard let q = lastQualifying, state.slug != nil else { return nil }
+        guard let q = lastQualifying, let slug = state.slug else { return nil }
         let age = now.timeIntervalSince(q.sample.timestamp)
-        guard age >= 0, age <= config.maxEvidenceAge, q.sample.horizontalAccuracy <= config.maxAccuracy else { return nil }
+        guard age >= 0, age <= config.maxEvidenceAge, q.sample.horizontalAccuracy <= accuracyLimit(slug) else { return nil }
         return LocationEvidence(fixTimestamp: q.sample.timestamp, fixAge: age,
                                 horizontalAccuracy: q.sample.horizontalAccuracy, stationary: false)
+    }
+
+    /// The accuracy limit for a zone (its own override, else the global one).
+    private func accuracyLimit(_ slug: String) -> Double {
+        zones.first { $0.slug == slug }?.maxAccuracy(default: config.maxAccuracy) ?? config.maxAccuracy
+    }
+
+    /// How deep inside a fix must have been to be re-cited while stationary. `circle` zones: a couple of accuracy
+    /// radii from the edge. `point` zones (buildings) are too small for that, and people sit still indoors, so the
+    /// fix's position only has to be at least the safety margin inside.
+    private func requiredStationaryDepth(_ slug: String, accuracy: Double) -> Double {
+        if zones.first(where: { $0.slug == slug })?.membershipRule == .point { return config.safetyMargin }
+        return config.stationaryDepthFactor * (accuracy + config.safetyMargin)
     }
 
     // MARK: Classification
@@ -270,15 +283,33 @@ nonisolated struct MembershipEngine: Sendable {
     }
 
     func classify(_ sample: LocationSample) -> Verdict {
-        guard sample.horizontalAccuracy >= 0, sample.horizontalAccuracy <= config.maxAccuracy else { return .uncertain }
-        let radius = sample.horizontalAccuracy + config.safetyMargin
+        let accuracy = sample.horizontalAccuracy
+        let enabled = zones.filter(\.enabled)
+        // Too coarse for every zone: say nothing (never an entry, never an exit).
+        guard accuracy >= 0, accuracy.isFinite,
+              accuracy <= (enabled.map { $0.maxAccuracy(default: config.maxAccuracy) }.max() ?? config.maxAccuracy)
+        else { return .uncertain }
+        let radius = accuracy + config.safetyMargin
         var insideSlugs: [(String, Double)] = []
         var anyStraddleInside = false, anyStraddleOutside = false
-        for zone in zones where zone.enabled {
-            switch zone.shape.relation(of: sample.coordinate, radius: radius) {
-            case .inside: insideSlugs.append((zone.slug, zone.shape.distanceToBoundary(from: sample.coordinate)))
-            case .outside: break
-            case .straddling(let centerInside): if centerInside { anyStraddleInside = true } else { anyStraddleOutside = true }
+        for zone in enabled {
+            // A fix too coarse for this zone can't put you in it, but it still can't rule the zone out either.
+            let tooCoarse = accuracy > zone.maxAccuracy(default: config.maxAccuracy)
+            switch zone.membershipRule {
+            case .circle:
+                switch zone.shape.relation(of: sample.coordinate, radius: radius) {
+                case .outside: break
+                case _ where tooCoarse: anyStraddleInside = true
+                case .inside: insideSlugs.append((zone.slug, zone.shape.distanceToBoundary(from: sample.coordinate)))
+                case .straddling(let centerInside): if centerInside { anyStraddleInside = true } else { anyStraddleOutside = true }
+                }
+            case .point:
+                let depth = zone.shape.distanceToBoundary(from: sample.coordinate)
+                let inside = zone.shape.contains(sample.coordinate)
+                if !inside && depth >= radius { break }
+                if tooCoarse { anyStraddleInside = true }
+                else if inside { insideSlugs.append((zone.slug, depth)) }
+                else { anyStraddleOutside = true }   // just outside the walls: leaning out, not yet a confident exit
             }
         }
         if insideSlugs.count == 1, !anyStraddleInside, !anyStraddleOutside {
