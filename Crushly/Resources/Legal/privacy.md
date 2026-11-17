@@ -50,7 +50,7 @@ Phones report their own location, so someone using spoofing tools could falsely 
 
 **Us.** Our authorized moderators can access account, profile, report and message data to operate Crushly, review photos and reports, and keep people safe. Access is limited to named people.
 
-**Service providers.** Crushly is hosted on Supabase (database, authentication, file storage and server functions). Push notifications are delivered through Apple Push Notification service, and notification text never includes message content or locations. Sign-in codes are sent by email through [[EMAIL PROVIDER]]. These providers process data only to provide their services to us.
+**Service providers.** Crushly is hosted on Supabase (database, authentication, file storage and server functions). Push notifications are delivered through Apple Push Notification service, and notification text never includes message content or locations. Sign-in codes are sent by email through Resend. These providers process data only to provide their services to us.
 
 **Legal and safety.** We may disclose information if required by law, or if we believe in good faith it's necessary to prevent harm, including reporting credible threats to USC Department of Public Safety or law enforcement.
 
@@ -67,7 +67,7 @@ We don't sell your personal information or share it for advertising.
 | Report evidence (message copies) | 90 days after the report |
 | Reports | [[REPORT RETENTION, e.g. 2 years after the report is closed]] |
 | Usage events | [[ANALYTICS RETENTION]] |
-| Deletion records (used to re-apply deletions after a backup restore) | [[TOMBSTONE RETENTION DAYS]] days |
+| Deletion records (used to re-apply deletions after a backup restore) | 14 days |
 | Backups | Up to [[BACKUP RETENTION DAYS]] days |
 
 ## Deleting your account
