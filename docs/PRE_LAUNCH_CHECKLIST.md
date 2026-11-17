@@ -8,17 +8,18 @@ Design rationale: [CAMPUS_SPACES_DESIGN.md](CAMPUS_SPACES_DESIGN.md). Server con
 Run [`supabase/ops/verify_production.sql`](../supabase/ops/verify_production.sql) (read-only) first and again before
 launch: it checks most of §1, the dev account, enabled zones and the photo bucket in one table of PASS/FAIL/CHECK rows.
 
-- [ ] **`allow_draft_spaces` is `false`.** Drafts must never be usable in production:
+- [x] **`allow_draft_spaces` is `false`.** *(Verified 2026-11-17 by `verify_production.sql`.)* Drafts must never be usable in production:
   ```sql
   update public.app_settings set value = 'false' where key = 'allow_draft_spaces';
   select value from public.app_settings where key = 'allow_draft_spaces';   -- expect false
   ```
-- [ ] **`deletion_tombstone_retention_days` ≥ your backup retention** (check Project Settings → Database → Backups; the
-  default setting is 14 days):
+- [x] **`deletion_tombstone_retention_days` ≥ your backup retention** (check Project Settings → Database → Backups; the
+  default setting is 14 days). *(2026-11-17: the project is on the Free plan, which has no automatic backups, so 14 days
+  is enough. **Re-check if you upgrade**: Pro keeps 7 days of daily backups, and point-in-time recovery can keep more.)*
   ```sql
   update public.app_settings set value = '<days>' where key = 'deletion_tombstone_retention_days';
   ```
-- [ ] **pg_cron enabled**, with `crushly_tick()` scheduled every minute (sessions, pauses, evidence and tombstone
+- [x] **pg_cron enabled** *(verified 2026-11-17: `crushly-tick` and `crushly-push` active)*, with `crushly_tick()` scheduled every minute (sessions, pauses, evidence and tombstone
   retention), plus the `push-dispatch` schedule from [NOTIFICATIONS.md](NOTIFICATIONS.md). The init migration only
   schedules the tick if pg_cron was already enabled when it ran; check, and schedule it if missing:
   ```sql
@@ -27,15 +28,20 @@ launch: it checks most of §1, the dev account, enabled zones and the photo buck
   ```
   No read path depends on the tick (every check uses `lease_expires_at > now()`), but retention does.
 - [ ] All migrations applied in order: `20261110000000_init`, `20261111000000_notifications`,
-  `20261116000000_campus_spaces`, `20261117000000_draft_usc_spaces`, `20261118000000_realtime_pokes`.
-- [ ] Review the other `app_settings` values (discovery minimum of 4, 8 results, 5 interests per visit, 30–90 s receipt
+  `20261116000000_campus_spaces`, `20261117000000_draft_usc_spaces`, `20261118000000_realtime_pokes`,
+  `20261119000000_discovery_min_two`, `20261120000000_indoor_zones_iyh`. Check with
+  `npx supabase db push --remote --dry-run` (expect "up to date"). *(2026-11-17: the first five were applied by hand and
+  recorded with `migration repair`; `discovery_min_two` was pushed.)*
+- [ ] Review the other `app_settings` values (discovery minimum of 2, 8 results, 5 interests per visit, 30–90 s receipt
   delay, rate limits) and tune them for launch.
 
 ## 2. Campus spaces (field validation)
 
-All three shipped zones are **drafts** traced from OpenStreetMap outlines. None has been walked.
+All four shipped zones are **drafts** traced from OpenStreetMap outlines. None has been walked. **Until at least one
+zone is `field_validated`, nobody can join a space on the production backend.**
 
-- [ ] For each zone (`upc-alumni-park-tommy-trojan`, `upc-mccarthy-quad`, `usc-village-great-lawn`): walk the
+- [ ] For each zone (`upc-alumni-park-tommy-trojan`, `upc-mccarthy-quad`, `usc-village-great-lawn`,
+  `upc-iovine-young-hall`): walk the
   perimeter and the middle with a dev build, at different times of day, near building edges and under trees. Record
   inside / outside / uncertain verdicts and the reported accuracy.
   - Use the DEBUG **field-validation overlay** (Spaces tab → "Field validation overlay"): it classifies every fix
@@ -44,6 +50,9 @@ All three shipped zones are **drafts** traced from OpenStreetMap outlines. None 
     only; cleared when closed. Rehearse first with the GPX routes in `Config/Locations/`. The dev project needs
     `allow_draft_spaces = true` (or a DEBUG build's bundled drafts) for the engine to use drafts; the overlay itself
     ignores that setting.
+- [ ] **Iovine and Young Hall is an indoor zone** (design §3.1a: `point` rule, 40 m accuracy limit). Confirm it is the
+  right building (OSM: 3738 Watt Way), then walk every floor and the pavement right outside the walls. False INSIDE
+  just outside the walls is the expected weakness of this rule; if it happens often, shrink the outline inward.
 - [ ] Adjust each polygon, keeping a ≥ 30 m gap between zones and stopping short of building entrances, residence-hall
   courtyards and health/counseling locations.
 - [ ] **Bump `boundary_version`** for every changed zone (consent is tied to the version), then set
@@ -61,12 +70,16 @@ All three shipped zones are **drafts** traced from OpenStreetMap outlines. None 
   expires, so shorter tokens shorten how long a revoked subscriber can keep receiving content-free pokes.
 - [ ] **Custom SMTP** configured (Authentication → SMTP) on the owned domain, and the Magic Link template includes
   `{{ .Token }}` (6-digit code).
-- [ ] **Dev sign-in bypass:** removed from the app and `create_dev_user.sql` deleted (2026-11-16). Once SMTP works,
-  delete the server-side account with [`supabase/ops/remove_dev_account.sql`](../supabase/ops/remove_dev_account.sql).
-- [ ] **APNs:** auth key (.p8), the Push Notifications capability in Xcode, and the `push-dispatch` secrets
-  ([NOTIFICATIONS.md](NOTIFICATIONS.md)).
-- [ ] **Redeploy edge functions** from the current source: `push-dispatch` (Verify JWT off; copy is now "You have a new
+- [x] **Dev sign-in bypass:** removed from the app and `create_dev_user.sql` deleted (2026-11-16). Server-side account
+  gone *(verified 2026-11-17 by `verify_production.sql`)*. If it ever comes back, delete it with [`supabase/ops/remove_dev_account.sql`](../supabase/ops/remove_dev_account.sql).
+- [x] **APNs:** auth key (.p8), the Push Notifications capability in Xcode, and the `push-dispatch` secrets
+  ([NOTIFICATIONS.md](NOTIFICATIONS.md)). *(2026-11-17: key `78K6WANWT7` on team `BKR349AF34`, Sandbox & Production;
+  all five secrets set; first dispatch returned 200. Keep the .p8 in a password manager, never in the repo.)*
+- [ ] **Push end to end on a real iPhone:** allow notifications, confirm a row in `device_tokens`, get a match, and
+  confirm the push arrives (`net._http_response` shows `sent ≥ 1`).
+- [x] **Redeploy edge functions** *(2026-11-17: both deployed; until then `delete-account` was missing in production)* from the current source: `push-dispatch` (Verify JWT off; copy is now "You have a new
   match." / "You have a new message.") and `delete-account` (Verify JWT on).
+- [ ] **Account deletion end to end:** delete a throwaway account from the app and confirm it is gone.
 - [ ] Supabase Auth rate limits for OTP send/verify reviewed (they are not enforced in SQL).
 
 ## 4. App build
@@ -91,7 +104,7 @@ All three shipped zones are **drafts** traced from OpenStreetMap outlines. None 
   90 days; deleted data persists in backups until they age out; people matching in a space can infer co-presence.
 - [ ] A named moderation owner and review process ([MODERATION.md](MODERATION.md)), including access to
   `report_evidence` (service role only) and the 90-day purge.
-- [ ] Restore runbook: after any database restore, wipe `participation_sessions` and re-apply deletions from
+- [ ] Restore runbook (only matters once the project has backups; the Free plan has none): after any database restore, wipe `participation_sessions` and re-apply deletions from
   `deletion_tombstones` (design §7.2).
 
 ## 6. Physical-device testing at USC (cannot be done in the simulator)

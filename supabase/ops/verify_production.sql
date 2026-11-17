@@ -65,9 +65,9 @@ begin
   if has_mig then
     select string_agg(m, ', ') into missing
       from unnest(array['20261110000000', '20261111000000', '20261116000000',
-                        '20261117000000', '20261118000000']) as m
+                        '20261117000000', '20261118000000', '20261119000000', '20261120000000']) as m
      where not exists (select 1 from supabase_migrations.schema_migrations s where s.version = m);
-    insert into crushly_checks values (6, 'migrations applied', 'all 5', coalesce('missing: ' || missing, 'all 5'),
+    insert into crushly_checks values (6, 'migrations applied', 'all 7', coalesce('missing: ' || missing, 'all 7'),
       case when missing is null then 'PASS' else 'FAIL' end);
   else
     -- Applied by hand: look for one object from each of the later migrations instead.
