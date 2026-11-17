@@ -20,3 +20,7 @@ DerivedData/
 Crushly/Resources/Secrets.plist
 supabase/.env
 supabase/.temp/
+
+# Apple private keys (APNs etc.): never commit
+*.p8
+AuthKey_*
