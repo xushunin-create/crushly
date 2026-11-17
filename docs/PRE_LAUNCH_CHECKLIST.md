@@ -90,8 +90,16 @@ zone is `field_validated`, nobody can join a space on the production backend.**
   `afterFirstUnlock`, so `SessionKeychainStorage` replaces it and upgrades existing items on first read (2026-11-16).
 - [ ] Release build runs in live mode (no DEMO badge); the demo fixture and simulated location are unreachable without
   `-CrushlyDemo` or missing secrets.
-- [ ] App Store privacy labels: precise location (used on device, not collected or linked), messages (collected,
-  linked), photos, email. Review notes: 18+, USC-only, not affiliated with USC.
+- [x] Privacy manifest `Crushly/Resources/PrivacyInfo.xcprivacy` (2026-11-17): no tracking; `UserDefaults` reason
+  `CA92.1`; collected types listed below.
+- [x] iPhone only (`TARGETED_DEVICE_FAMILY = 1`), so no iPad screenshots or iPad review. `ITSAppUsesNonExemptEncryption
+  = false` in `Config/Crushly-Info.plist` (HTTPS only; revisit if E2EE is added).
+- [ ] App Store privacy labels must **match the manifest**. All are "linked to you", none used for tracking, purpose
+  App Functionality unless noted: Email Address, Name, User ID, Photos, Emails or Text Messages, Other User Content,
+  Sensitive Info (gender / "Show me" can reveal orientation), **Coarse Location** (the campus space you're open to
+  matching in; coordinates never leave the phone), Product Interaction (purpose: Analytics). Precise location is used
+  only on the device and is not collected. If you decide the space id isn't "location", remove Coarse Location from
+  both the manifest and the labels. Review notes: 18+, USC-only, not affiliated with USC.
 
 ## 5. Legal and operations
 

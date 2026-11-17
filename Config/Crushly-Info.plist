@@ -11,6 +11,10 @@
 		<key>CampusMatching</key>
 		<string>Approximate location can be off by miles, so Crushly can't tell whether you're in a campus space. Precise location stays on your phone and is never shown to anyone.</string>
 	</dict>
+	<!-- Only standard HTTPS/TLS and Apple-provided crypto (exempt), so App Store Connect stops asking about export
+	     compliance on every upload. Revisit if end-to-end encryption is added (design §8.4). -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<!-- Only used while you've chosen "Open to matching": keeps your 60-second participation renewing with the
