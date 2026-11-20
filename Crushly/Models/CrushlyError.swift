@@ -26,6 +26,7 @@ nonisolated enum CrushlyError: Error, Equatable, LocalizedError, Sendable {
     // Client-side only.
     case locationNotVerified
     case invalidVerificationCode
+    case accountNotFound
     case network
     case backendNotConfigured
     case unknown(String)
@@ -81,6 +82,7 @@ nonisolated enum CrushlyError: Error, Equatable, LocalizedError, Sendable {
         case .invalidDuration: "That pause length isn't available."
         case .domainNotAllowed: "Crushly is only open to USC email addresses right now."
         case .invalidVerificationCode: "That code is incorrect or expired."
+        case .accountNotFound: "There's no Crushly account for that email yet. Choose Create account to make one."
         case .network: "You appear to be offline. We'll retry when you're back."
         case .backendNotConfigured: "The live backend isn't configured."
         case .unknown(let detail): "Something went wrong (\(detail))."

@@ -7,8 +7,9 @@ import Foundation
 protocol AuthService: AnyObject {
     /// Restores a persisted session, if any. Returns the signed-in user's email.
     func restoreSession() async -> String?
-    /// Sends a one-time sign-in code. Creates the account on first use (passwordless).
-    func requestCode(email: String) async throws
+    /// Sends a one-time sign-in code (passwordless). With `createAccount`, a new address gets an account;
+    /// without it, an unknown address throws `CrushlyError.accountNotFound` and nothing is created.
+    func requestCode(email: String, createAccount: Bool) async throws
     func verifyCode(email: String, code: String) async throws
     func signOut() async throws
     /// Permanently deletes the account, photos and dependent records (server-side).
@@ -111,6 +112,10 @@ nonisolated enum AnalyticsEvent: String, Sendable, CaseIterable {
     case notificationOpened = "notification_opened"
     case notificationPrefsChanged = "notification_prefs_changed"
     case accountDeleted = "account_deleted"
+}
+
+extension AuthService {
+    func requestCode(email: String) async throws { try await requestCode(email: email, createAccount: true) }
 }
 
 typealias CrushlyBackend = AuthService & ProfileService & SpaceService & ParticipationService & DiscoveryService

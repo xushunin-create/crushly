@@ -1131,9 +1131,10 @@ final class AppState {
 
     // MARK: Auth intents
 
-    func requestCode(email: String) async throws {
+    func requestCode(email: String, createAccount: Bool = true) async throws {
         guard rules.isAllowedEmail(email) else { throw CrushlyError.domainNotAllowed }
-        try await backend.requestCode(email: email.lowercased().trimmingCharacters(in: .whitespaces))
+        try await backend.requestCode(email: email.lowercased().trimmingCharacters(in: .whitespaces),
+                                      createAccount: createAccount)
     }
 
     func verifyCode(email: String, code: String) async throws {

@@ -67,9 +67,25 @@ final class SupabaseBackend: CrushlyBackend {
         return session.user.email
     }
 
-    func requestCode(email: String) async throws {
+    /// The one App Review account. No email is sent for it; the reviewer types the fixed code from
+    /// App Review Information, which `review-sign-in` checks server-side (REVIEW_EMAIL / REVIEW_CODE secrets).
+    static let appReviewEmail = "crushly-appreview@usc.edu"
+
+    private nonisolated struct ReviewSignInRequest: Encodable, Sendable { let email: String; let code: String }
+    private nonisolated struct ReviewSignInTokens: Decodable, Sendable {
+        let accessToken: String
+        let refreshToken: String
+        enum CodingKeys: String, CodingKey { case accessToken = "access_token", refreshToken = "refresh_token" }
+    }
+
+    func requestCode(email: String, createAccount: Bool) async throws {
+        if email == Self.appReviewEmail { return }
         do {
-            try await client.auth.signInWithOTP(email: email, shouldCreateUser: true)
+            try await client.auth.signInWithOTP(email: email, shouldCreateUser: createAccount)
+        } catch AuthError.api(_, let code, _, _) where !createAccount
+                    && [.otpDisabled, .signupDisabled, .userNotFound].contains(code) {
+            // GoTrue refuses to create the user ("Signups not allowed for otp"): no account for this address.
+            throw CrushlyError.accountNotFound
         } catch {
             // The allowed-domain trigger rejects the insert; GoTrue surfaces it as a database error.
             if "\(error)".localizedCaseInsensitiveContains("database error") { throw CrushlyError.domainNotAllowed }
@@ -78,11 +94,28 @@ final class SupabaseBackend: CrushlyBackend {
     }
 
     func verifyCode(email: String, code: String) async throws {
+        if email == Self.appReviewEmail {
+            try await reviewSignIn(email: email, code: code)
+            return
+        }
         do {
             _ = try await client.auth.verifyOTP(email: email, token: code, type: .email)
         } catch is AuthError {
             throw CrushlyError.invalidVerificationCode
         }
+    }
+
+    private func reviewSignIn(email: String, code: String) async throws {
+        let tokens: ReviewSignInTokens
+        do {
+            tokens = try await client.functions.invoke(
+                "review-sign-in",
+                options: FunctionInvokeOptions(method: .post, body: ReviewSignInRequest(email: email, code: code))
+            )
+        } catch FunctionsError.httpError(let status, _) {
+            throw status == 429 ? CrushlyError.rateLimited : CrushlyError.invalidVerificationCode
+        }
+        try await client.auth.setSession(accessToken: tokens.accessToken, refreshToken: tokens.refreshToken)
     }
 
     func signOut() async throws {

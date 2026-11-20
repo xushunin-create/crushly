@@ -54,3 +54,7 @@ verify_jwt = true
 # Called by pg_cron with a shared secret (x-dispatch-secret), not by users.
 [functions.push-dispatch]
 verify_jwt = false
+
+# App Review sign-in: called before the reviewer has a session. Checks REVIEW_EMAIL / REVIEW_CODE itself.
+[functions.review-sign-in]
+verify_jwt = false

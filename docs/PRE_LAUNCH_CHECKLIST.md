@@ -100,6 +100,17 @@ zone is `field_validated`, nobody can join a space on the production backend.**
   matching in; coordinates never leave the phone), Product Interaction (purpose: Analytics). Precise location is used
   only on the device and is not collected. If you decide the space id isn't "location", remove Coarse Location from
   both the manifest and the labels. Review notes: 18+, USC-only, not affiliated with USC.
+- [ ] **App Review sign-in.** Reviewers can't receive a USC email code, so one fixed account,
+  `crushly-appreview@usc.edu`, signs in with a fixed 6-digit code through the `review-sign-in` edge function (no email
+  is sent; the account has no password, so `verify_production.sql` check 7 still passes; 10 tries/hour, 30/day).
+  1. Apply `20261121000000_review_sign_in` (adds the `review_sign_in` rate limit).
+  2. `supabase secrets set REVIEW_EMAIL=crushly-appreview@usc.edu REVIEW_CODE=<6 random digits>`
+  3. `supabase functions deploy review-sign-in --no-verify-jwt`
+  4. Sign in once yourself with that email and code, and finish the profile so the reviewer lands in a working app.
+  5. App Store Connect → App Review Information: sign-in required, user name `crushly-appreview@usc.edu`, password
+     `<the code>`. In Notes, say: type the email, tap *Email me a code*, then enter the code (no email is sent);
+     matching only works inside the USC campus spaces, so attach a screen recording of the in-space flow.
+  To turn it off later, `supabase secrets unset REVIEW_CODE` (the function then rejects every attempt).
 
 ## 5. Legal and operations
 

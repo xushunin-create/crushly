@@ -1,8 +1,11 @@
 import SwiftUI
 
-/// Passwordless USC email sign-in. The same flow creates an account, signs in, and recovers access.
+/// Passwordless USC email sign-in. "Create account" makes an account for a new address; "Sign in" only works for an
+/// existing one, so a mistyped address doesn't quietly create a second, empty account.
 struct SignInView: View {
     @Environment(AppState.self) private var state
+    @State private var mode: Mode = .createAccount
+    @State private var noAccountFor: String?
     @State private var email = ""
     @State private var code = ""
     @State private var codeSentTo: String?
@@ -10,6 +13,12 @@ struct SignInView: View {
     @FocusState private var focus: Field?
 
     private enum Field { case email, code }
+
+    enum Mode: String, CaseIterable, Identifiable {
+        case createAccount, signIn
+        var id: Self { self }
+        var title: String { self == .createAccount ? "Create account" : "Sign in" }
+    }
 
     var body: some View {
         ZStack {
@@ -65,7 +74,14 @@ struct SignInView: View {
 
     private var emailStep: some View {
         VStack(alignment: .leading, spacing: Theme.Space.m) {
-            Eyebrow(text: "USC email")
+            Picker("Account", selection: $mode) {
+                ForEach(Mode.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("signin.mode")
+            .onChange(of: mode) { noAccountFor = nil }
+
+            Eyebrow(text: mode == .createAccount ? "New here? Use your USC email" : "Welcome back")
             TextField("you@usc.edu", text: $email)
                 .textContentType(.emailAddress)
                 .keyboardType(.emailAddress)
@@ -74,6 +90,7 @@ struct SignInView: View {
                 .focused($focus, equals: .email)
                 .submitLabel(.send)
                 .onSubmit { Task { await sendCode() } }
+                .onChange(of: email) { noAccountFor = nil }
                 .font(Theme.Typeface.body)
                 .padding(.horizontal, Theme.Space.l)
                 .frame(minHeight: 54)
@@ -86,6 +103,21 @@ struct SignInView: View {
                 Label("Use your @usc.edu address.", systemImage: "info.circle")
                     .font(Theme.Typeface.footnote)
                     .foregroundStyle(Theme.Palette.danger)
+            }
+
+            if let missing = noAccountFor {
+                VStack(alignment: .leading, spacing: Theme.Space.s) {
+                    Label("There's no Crushly account for \(missing) yet.", systemImage: "person.crop.circle.badge.questionmark")
+                        .font(Theme.Typeface.footnote)
+                        .foregroundStyle(Theme.Palette.danger)
+                    Button("Create an account instead") {
+                        mode = .createAccount
+                        Task { await sendCode() }
+                    }
+                    .font(Theme.Typeface.subheadline.weight(.semibold))
+                    .frame(minHeight: Theme.minTap)
+                    .accessibilityIdentifier("signin.createInstead")
+                }
             }
 
             AsyncButton { await sendCode() } label: { Text("Email me a code") }
@@ -145,7 +177,18 @@ struct SignInView: View {
     private func sendCode() async {
         let target = email.lowercased().trimmingCharacters(in: .whitespaces)
         guard state.rules.isAllowedEmail(target) else { return }
-        if await state.perform({ try await state.requestCode(email: target) }) {
+        noAccountFor = nil
+        var missing = false
+        let sent = await state.perform {
+            do {
+                try await state.requestCode(email: target, createAccount: mode == .createAccount)
+            } catch CrushlyError.accountNotFound {
+                missing = true
+            }
+        }
+        if missing {
+            noAccountFor = target
+        } else if sent {
             codeSentTo = target
             resendAvailableAt = Date().addingTimeInterval(30)
         }

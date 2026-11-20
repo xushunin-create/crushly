@@ -369,7 +369,8 @@ final class DemoBackend: CrushlyBackend {
 
     func restoreSession() async -> String? { signedInEmail }
 
-    func requestCode(email: String) async throws {
+    /// The demo keeps no accounts between runs, so "sign in" accepts any USC address like "create account".
+    func requestCode(email: String, createAccount: Bool) async throws {
         try await pause()
         guard rules.isAllowedEmail(email) else { throw CrushlyError.domainNotAllowed }
         pendingCodeEmail = email.lowercased()
