@@ -42,8 +42,16 @@ struct TermsView: View {
                     .buttonStyle(.crush(.quiet))
             }
             .padding(Theme.Space.gutter)
+            .crushScrollPadding()
         }
+<<<<<<< Updated upstream
         .sheet(item: $showing) { doc in LegalDocumentView(title: doc.rawValue) }
+=======
+        .scrollIndicators(.hidden)
+        .sheet(item: $showing) { doc in
+            LegalDocumentView(kind: doc) { readToEnd.insert(doc) }
+        }
+>>>>>>> Stashed changes
     }
 
     private func promise(_ icon: String, _ title: String, _ detail: String) -> some View {

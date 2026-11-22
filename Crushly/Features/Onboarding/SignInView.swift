@@ -32,7 +32,9 @@ struct SignInView: View {
                 }
                 .padding(Theme.Space.gutter)
                 .padding(.top, Theme.Space.xxl)
+                .crushScrollPadding()
             }
+            .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
         }
         .onAppear { focus = .email }

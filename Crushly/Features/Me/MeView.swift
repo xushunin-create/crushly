@@ -93,8 +93,13 @@ struct MeView: View {
             if state.demo != nil { DemoControlsSection() }
         }
         .scrollContentBackground(.hidden)
-        .background(Theme.Palette.paper)
+        .background(RetroBackground())
+        .listSectionSpacing(Theme.Space.l)
+        .listRowBackground(Theme.Palette.surface.opacity(0.94))
+        .listRowSeparatorTint(Theme.Palette.oxblood.opacity(0.12))
+        .contentMargins(.bottom, Theme.Space.screenBottom, for: .scrollContent)
         .foregroundStyle(Theme.Palette.ink, Theme.Palette.inkSoft)   // section headers/footers readable on paper
+<<<<<<< Updated upstream
         .navigationTitle("Me")
         .sheet(isPresented: $showShield) { ShieldSheet().presentationDetents([.medium]) }
         .sheet(item: $legal) { doc in LegalDocumentView(title: doc.rawValue) }
@@ -105,6 +110,10 @@ struct MeView: View {
         } message: {
             Text("Your profile, photos, signals, matches and settings are deleted. Reports involving you may be kept for safety review.")
         }
+=======
+        .navigationTitle("My Crushly")
+        .sheet(item: $legal) { doc in LegalDocumentView(kind: doc) }
+>>>>>>> Stashed changes
         .onAppear { verifiedOnly = state.account.verifiedOnlyDiscovery }
     }
 

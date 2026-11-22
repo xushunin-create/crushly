@@ -48,13 +48,23 @@ struct ProfileEditorView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Space.xl) {
                 if mode == .onboarding {
+<<<<<<< Updated upstream
                     VStack(alignment: .leading, spacing: Theme.Space.xs) {
                         Text("Make a first impression.").font(Theme.Typeface.title)
                         Text("Only people active in the same Campus Space can see it.")
+=======
+                    VStack(alignment: .leading, spacing: Theme.Space.s) {
+                        Text("Make a first impression.")
+                            .font(Theme.Typeface.title)
+                            .foregroundStyle(Theme.Palette.oxblood)
+                        Capsule().fill(Theme.Palette.crush).frame(width: 46, height: 4)
+                        Text("Only people open to matching in the same campus space can see it.")
+>>>>>>> Stashed changes
                             .font(Theme.Typeface.callout).foregroundStyle(Theme.Palette.inkSoft)
                     }
                 }
 
+<<<<<<< Updated upstream
                 photos(draft)
                 basics(draft)
                 interests(draft)
@@ -62,6 +72,15 @@ struct ProfileEditorView: View {
                 prompt(draft)
                 intentions(draft)
                 instagramSection
+=======
+                photos(draft).editorSection()
+                basics(draft).editorSection()
+                interests(draft).editorSection()
+                vibes(draft).editorSection()
+                prompt(draft).editorSection()
+                intentions(draft).editorSection()
+                matchingPreferences.editorSection()
+>>>>>>> Stashed changes
 
                 if showMissing, !draft.wrappedValue.missingFields.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
@@ -81,8 +100,9 @@ struct ProfileEditorView: View {
                 .accessibilityIdentifier("profile.save")
             }
             .padding(Theme.Space.gutter)
-            .padding(.bottom, Theme.Space.xxl)
+            .crushScrollPadding()
         }
+        .scrollIndicators(.hidden)
         .scrollDismissesKeyboard(.interactively)
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -168,7 +188,7 @@ struct ProfileEditorView: View {
             }
             .padding(.horizontal, Theme.Space.l)
             .frame(minHeight: 54)
-            .background(Theme.Palette.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.s))
+            .background(Theme.Palette.field, in: RoundedRectangle(cornerRadius: Theme.Radius.s))
             choiceRow("Pronouns", options: ["she/her", "he/him", "they/them", "she/they", "he/they"], selection: draft.pronouns)
             choiceRow("Gender", options: ["Woman", "Man", "Non-binary"], selection: draft.gender)
         }
@@ -250,7 +270,7 @@ struct ProfileEditorView: View {
                 .lineLimit(2...4)
                 .font(Theme.Typeface.body)
                 .padding(Theme.Space.l)
-                .background(Theme.Palette.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.s))
+                .background(Theme.Palette.field, in: RoundedRectangle(cornerRadius: Theme.Radius.s))
                 .onChange(of: draft.wrappedValue.promptAnswer) { _, new in
                     if new.count > ProfileRules.promptMaxLength {
                         draft.wrappedValue.promptAnswer = String(new.prefix(ProfileRules.promptMaxLength))
@@ -288,6 +308,23 @@ struct ProfileEditorView: View {
         }
     }
 
+<<<<<<< Updated upstream
+=======
+    private func ageStepper(_ title: String, value: Binding<Int>, range: ClosedRange<Int>, plusAtTop: Bool = false) -> some View {
+        Stepper(value: value, in: range) {
+            HStack {
+                Text(title).font(Theme.Typeface.callout.weight(.semibold))
+                Spacer()
+                Text(plusAtTop && value.wrappedValue >= range.upperBound ? "\(range.upperBound)+" : "\(value.wrappedValue)")
+                    .font(Theme.Typeface.headline)
+            }
+        }
+        .padding(.horizontal, Theme.Space.l)
+        .frame(minHeight: 54)
+        .background(Theme.Palette.field, in: RoundedRectangle(cornerRadius: Theme.Radius.s))
+    }
+
+>>>>>>> Stashed changes
     // MARK: Helpers
 
     private func field(_ title: String, text: Binding<String>) -> some View {
@@ -295,7 +332,7 @@ struct ProfileEditorView: View {
             .font(Theme.Typeface.body)
             .padding(.horizontal, Theme.Space.l)
             .frame(minHeight: 54)
-            .background(Theme.Palette.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.s))
+            .background(Theme.Palette.field, in: RoundedRectangle(cornerRadius: Theme.Radius.s))
             .overlay(RoundedRectangle(cornerRadius: Theme.Radius.s).stroke(Theme.Palette.hairline))
     }
 
