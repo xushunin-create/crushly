@@ -56,9 +56,13 @@ struct MeView: View {
             if state.demo != nil { DemoControlsSection() }
         }
         .scrollContentBackground(.hidden)
-        .background(Theme.Palette.paper)
+        .background(RetroBackground())
+        .listSectionSpacing(Theme.Space.l)
+        .listRowBackground(Theme.Palette.surface.opacity(0.94))
+        .listRowSeparatorTint(Theme.Palette.oxblood.opacity(0.12))
+        .contentMargins(.bottom, Theme.Space.screenBottom, for: .scrollContent)
         .foregroundStyle(Theme.Palette.ink, Theme.Palette.inkSoft)   // section headers/footers readable on paper
-        .navigationTitle("Me")
+        .navigationTitle("My Crushly")
         .sheet(item: $legal) { doc in LegalDocumentView(kind: doc) }
         .onAppear { verifiedOnly = state.account.verifiedOnlyDiscovery }
     }

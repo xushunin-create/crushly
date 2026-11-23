@@ -116,7 +116,7 @@ struct PrivacyCover: View {
         ZStack {
             RetroBackground()
             VStack(spacing: Theme.Space.l) {
-                HeartMark(size: 64)
+                CrushlyBrandIcon(size: 84)
                 Text("Crushly").font(Theme.Typeface.display).foregroundStyle(Theme.Palette.oxblood)
             }
         }

@@ -12,7 +12,7 @@ struct CrushButtonStyle: ButtonStyle {
         configuration.label
             .font(Theme.Typeface.button)
             .multilineTextAlignment(.center)
-            .frame(maxWidth: .infinity, minHeight: 54)
+            .frame(maxWidth: .infinity, minHeight: 52)
             .padding(.horizontal, Theme.Space.l)
             .foregroundStyle(foreground)
             .background {
@@ -26,9 +26,9 @@ struct CrushButtonStyle: ButtonStyle {
             }
             .overlay(Capsule().stroke(border, lineWidth: kind == .secondary || kind == .onInk ? 1.5 : 0))
             .shadow(
-                color: kind == .primary ? Theme.Palette.periwinkle.opacity(0.28) : .clear,
-                radius: 10,
-                y: 5
+                color: kind == .primary ? Theme.Palette.oxblood.opacity(0.20) : .clear,
+                radius: 12,
+                y: 6
             )
             .opacity(isEnabled ? 1 : 0.45)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
@@ -39,7 +39,8 @@ struct CrushButtonStyle: ButtonStyle {
     private var foreground: Color {
         switch kind {
         case .primary, .ink, .onInk: .white
-        case .secondary, .quiet: Theme.Palette.oxblood
+        case .secondary: Theme.Palette.periwinkle
+        case .quiet: Theme.Palette.ink
         case .destructive: Theme.Palette.danger
         }
     }
@@ -57,7 +58,7 @@ struct CrushButtonStyle: ButtonStyle {
 
     private var border: Color {
         switch kind {
-        case .secondary: Theme.Palette.oxblood.opacity(0.75)
+        case .secondary: Theme.Palette.periwinkle.opacity(0.78)
         case .onInk: .white.opacity(0.7)
         default: .clear
         }
@@ -67,6 +68,14 @@ struct CrushButtonStyle: ButtonStyle {
 extension ButtonStyle where Self == CrushButtonStyle {
     static var crush: CrushButtonStyle { CrushButtonStyle(kind: .primary) }
     static func crush(_ kind: CrushButtonStyle.Kind) -> CrushButtonStyle { CrushButtonStyle(kind: kind) }
+}
+
+extension View {
+    /// A consistent surface for the long profile form. Grouping controls into
+    /// cards makes scanning easier and prevents the form from feeling crowded.
+    func editorSection() -> some View {
+        self.crushCard(padding: Theme.Space.l, fill: Theme.Palette.surface.opacity(0.92))
+    }
 }
 
 /// Button that shows a spinner while its async action runs and ignores repeated taps.
@@ -124,6 +133,40 @@ struct SectionHeader: View {
             Spacer(minLength: Theme.Space.m)
             trailing
         }
+    }
+}
+
+/// Compact page heading used by root tabs. The coral rule repeats the
+/// hand-drawn underline from the brand board without compromising legibility.
+struct ScreenHeading: View {
+    let title: String
+    var subtitle: String? = nil
+    var trailing: AnyView? = nil
+
+    var body: some View {
+        HStack(alignment: .top, spacing: Theme.Space.m) {
+            VStack(alignment: .leading, spacing: Theme.Space.s) {
+                Text(title)
+                    .font(Theme.Typeface.title)
+                    .foregroundStyle(Theme.Palette.oxblood)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.75)
+                Capsule()
+                    .fill(Theme.Palette.crush)
+                    .frame(width: 46, height: 4)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(Theme.Typeface.subheadline)
+                        .foregroundStyle(Theme.Palette.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: Theme.Space.s)
+            trailing
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -194,26 +237,42 @@ struct RetroBackground: View {
             ZStack {
                 Theme.Palette.paper
 
+                LinearGradient(
+                    colors: [.white.opacity(0.22), .clear, Theme.Palette.crush.opacity(0.035)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
                 Circle()
-                    .fill(Theme.Palette.blush.opacity(0.45))
+                    .fill(Theme.Palette.blush.opacity(0.34))
                     .frame(width: proxy.size.width * 0.72)
                     .offset(x: proxy.size.width * 0.34, y: -proxy.size.height * 0.40)
 
                 Circle()
-                    .trim(from: 0.48, to: 1)
-                    .stroke(Theme.Palette.orange.opacity(0.72), lineWidth: 28)
-                    .frame(width: proxy.size.width * 0.62, height: proxy.size.width * 0.62)
-                    .rotationEffect(.degrees(18))
-                    .offset(x: -proxy.size.width * 0.38, y: proxy.size.height * 0.42)
-
-                Circle()
-                    .fill(Theme.Palette.crush.opacity(0.15))
-                    .frame(width: proxy.size.width * 0.42)
-                    .offset(x: proxy.size.width * 0.42, y: proxy.size.height * 0.34)
+                    .fill(Theme.Palette.orange.opacity(0.08))
+                    .frame(width: proxy.size.width * 0.26)
+                    .offset(x: -proxy.size.width * 0.47, y: -proxy.size.height * 0.30)
             }
         }
         .ignoresSafeArea()
         .accessibilityHidden(true)
+    }
+}
+
+/// The real Crushly app icon, reused as the in-app brand mark instead of a
+/// generic heart. Keeping one mark makes launch, sign-in, and the Home Screen
+/// icon feel like the same product.
+struct CrushlyBrandIcon: View {
+    var size: CGFloat = 72
+
+    var body: some View {
+        Image("CrushlyBrandIcon")
+            .resizable()
+            .scaledToFit()
+            .frame(width: size, height: size)
+            .clipShape(RoundedRectangle(cornerRadius: size * 0.23, style: .continuous))
+            .shadow(color: Theme.Palette.orange.opacity(0.18), radius: size * 0.12, y: size * 0.06)
+            .accessibilityHidden(true)
     }
 }
 

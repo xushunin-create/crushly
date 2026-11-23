@@ -21,8 +21,9 @@ struct SpacesView: View {
             }
             .padding(.horizontal, Theme.Space.gutter)
             .padding(.top, Theme.Space.s)
-            .padding(.bottom, Theme.Space.xl)
+            .crushScrollPadding()
         }
+        .scrollIndicators(.hidden)
         .refreshable {
             await state.reconcileParticipation()
             await state.refreshDiscovery(force: true)
@@ -37,17 +38,12 @@ struct SpacesView: View {
     }
 
     private var header: some View {
-        HStack {
-            Text("Spaces")
-                .font(Theme.Typeface.title)
-                .lineLimit(1)
-                .minimumScaleFactor(0.5)
-                .foregroundStyle(Theme.Palette.oxblood)
-                .accessibilityAddTraits(.isHeader)
-            Spacer()
-            if state.config.isDemo { DemoBadge() }
-        }
-        .frame(minHeight: Theme.minTap)
+        ScreenHeading(
+            title: "Spaces",
+            subtitle: "Campus matching, on your terms.",
+            trailing: state.config.isDemo ? AnyView(DemoBadge()) : nil
+        )
+        .padding(.top, Theme.Space.s)
     }
 
     private var rejectedPhotoCard: some View {

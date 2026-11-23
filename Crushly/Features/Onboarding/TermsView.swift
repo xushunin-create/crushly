@@ -44,7 +44,9 @@ struct TermsView: View {
                     .buttonStyle(.crush(.quiet))
             }
             .padding(Theme.Space.gutter)
+            .crushScrollPadding()
         }
+        .scrollIndicators(.hidden)
         .sheet(item: $showing) { doc in
             LegalDocumentView(kind: doc) { readToEnd.insert(doc) }
         }

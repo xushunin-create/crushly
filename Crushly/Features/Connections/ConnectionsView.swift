@@ -7,17 +7,12 @@ struct ConnectionsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Space.m) {
-                HStack {
-                    Text("Connections")
-                        .font(Theme.Typeface.title)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.5)
-                        .foregroundStyle(Theme.Palette.oxblood)
-                        .accessibilityAddTraits(.isHeader)
-                    Spacer()
-                    if state.config.isDemo { DemoBadge() }
-                }
-                .frame(minHeight: Theme.minTap)
+                ScreenHeading(
+                    title: "Connections",
+                    subtitle: "Mutual matches and private conversations.",
+                    trailing: state.config.isDemo ? AnyView(DemoBadge()) : nil
+                )
+                .padding(.top, Theme.Space.s)
 
                 if !state.conversationsLoaded, let error = state.conversationsError {
                     EmptyStateView(symbol: state.isOffline ? "wifi.slash" : "exclamationmark.triangle",
@@ -43,8 +38,9 @@ struct ConnectionsView: View {
             }
             .padding(.horizontal, Theme.Space.gutter)
             .padding(.top, Theme.Space.s)
-            .padding(.bottom, Theme.Space.xl)
+            .crushScrollPadding()
         }
+        .scrollIndicators(.hidden)
         .refreshable { await state.refreshConversations() }
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(for: UUID.self) { id in

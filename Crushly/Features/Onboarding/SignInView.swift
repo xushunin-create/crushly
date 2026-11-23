@@ -41,7 +41,9 @@ struct SignInView: View {
                 }
                 .padding(Theme.Space.gutter)
                 .padding(.top, Theme.Space.xxl)
+                .crushScrollPadding()
             }
+            .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
         }
         .onAppear { focus = .email }
@@ -51,10 +53,8 @@ struct SignInView: View {
         VStack(alignment: .leading, spacing: Theme.Space.m) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 0) {
-                    ZStack(alignment: .leading) {
-                        SparkRays().offset(x: 2, y: -18)
-                        HeartMark(size: 42)
-                    }
+                    CrushlyBrandIcon(size: 58)
+                        .padding(.bottom, Theme.Space.s)
                     Text("Crushly")
                         .font(Theme.Typeface.display)
                         .foregroundStyle(Theme.Palette.oxblood)
@@ -63,8 +63,10 @@ struct SignInView: View {
                 if state.config.isDemo { DemoBadge() }
             }
             Text("Someone nearby\nmight be feeling it too.")
-                .font(Theme.Typeface.display)
+                .font(Theme.Typeface.title)
                 .foregroundStyle(Theme.Palette.oxblood)
+                .lineLimit(3)
+                .minimumScaleFactor(0.82)
                 .fixedSize(horizontal: false, vertical: true)
             Text("Crushly is for USC students. Interest stays anonymous until it's mutual.")
                 .font(Theme.Typeface.body)
