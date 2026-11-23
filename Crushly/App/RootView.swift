@@ -60,10 +60,7 @@ struct RootView: View {
 private struct LaunchView: View {
     var body: some View {
         VStack(spacing: Theme.Space.l) {
-            ZStack {
-                SparkRays()
-                HeartMark(size: 72)
-            }
+            CrushlyBrandIcon(size: 88)
             Text("Crushly")
                 .font(Theme.Typeface.display)
                 .foregroundStyle(Theme.Palette.oxblood)
@@ -81,18 +78,19 @@ struct MainTabs: View {
 
     var body: some View {
         @Bindable var state = state
-        ZStack(alignment: .bottom) {
-            Group {
-                switch state.selectedTab {
-                case .spaces: NavigationStack { SpacesView() }
-                case .connections: NavigationStack(path: $state.connectionsPath) { ConnectionsView() }
-                case .me: NavigationStack { MeView() }
-                }
+        Group {
+            switch state.selectedTab {
+            case .spaces: NavigationStack { SpacesView() }
+            case .connections: NavigationStack(path: $state.connectionsPath) { ConnectionsView() }
+            case .me: NavigationStack { MeView() }
             }
-            .safeAreaInset(edge: .bottom) { Color.clear.frame(height: showsTabBar ? 64 : 0) }
-
+        }
+        // Let SwiftUI reserve the exact tab-bar + Home-indicator height. The old
+        // overlay used a guessed 64pt spacer and could cover the last row/button.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             if showsTabBar {
                 CrushTabBar(selection: $state.selectedTab, connectionsBadge: state.unreadCount)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .fullScreenCover(item: $state.revealMatch) { match in
@@ -118,17 +116,21 @@ struct CrushTabBar: View {
             item(.connections, "Connections", "heart.text.square.fill", badge: connectionsBadge)
             item(.me, "Me", "person.crop.circle.fill")
         }
-        .padding(.horizontal, Theme.Space.s)
-        .padding(.vertical, Theme.Space.s)
+        .padding(.horizontal, Theme.Space.m)
+        .padding(.top, Theme.Space.s)
+        .padding(.bottom, 6)
         // Like the system tab bar: labels stop growing at XL; long-press shows the Large Content Viewer.
         .dynamicTypeSize(...DynamicTypeSize.xLarge)
         .background {
-            UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26)
+            UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28)
                 .fill(Theme.Palette.surface.opacity(0.97))
                 .overlay(alignment: .top) {
-                    Rectangle().fill(Theme.Palette.oxblood.opacity(0.08)).frame(height: 1)
+                    Capsule()
+                        .fill(Theme.Palette.crush.opacity(0.45))
+                        .frame(width: 42, height: 3)
+                        .padding(.top, 5)
                 }
-                .shadow(color: Theme.Palette.oxblood.opacity(0.12), radius: 16, y: -4)
+                .shadow(color: Theme.Palette.oxblood.opacity(0.13), radius: 18, y: -5)
                 .ignoresSafeArea(edges: .bottom)
         }
     }
@@ -144,9 +146,9 @@ struct CrushTabBar: View {
                 ZStack(alignment: .topTrailing) {
                     Image(systemName: icon)
                         .font(.system(size: 20, weight: .semibold))
-                        .frame(width: 48, height: 30)
-                        .background(selected ? Theme.Palette.oxblood : .clear, in: Capsule())
-                        .foregroundStyle(selected ? .white : Theme.Palette.inkSoft)
+                        .frame(width: 54, height: 30)
+                        .background(selected ? Theme.Palette.periwinkle : Theme.Palette.periwinkle.opacity(0.06), in: Capsule())
+                        .foregroundStyle(selected ? .white : Theme.Palette.inkSoft.opacity(0.88))
                     if badge > 0 {
                         Text("\(min(badge, 9))")
                             .font(.system(.caption2, design: .rounded).weight(.heavy))
@@ -161,7 +163,7 @@ struct CrushTabBar: View {
                     .font(Theme.Typeface.caption.weight(.bold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                    .foregroundStyle(selected ? Theme.Palette.ink : Theme.Palette.inkSoft)
+                    .foregroundStyle(selected ? Theme.Palette.oxblood : Theme.Palette.inkSoft)
             }
             .frame(maxWidth: .infinity, minHeight: Theme.minTap)
             .contentShape(Rectangle())

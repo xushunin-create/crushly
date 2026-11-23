@@ -8,6 +8,7 @@ enum Theme {
         // Crushly's retro campus palette from the visual system board.
         static let paper = Color(red: 0.976, green: 0.929, blue: 0.878)       // #F9EDE0
         static let surface = Color(red: 1.0, green: 0.976, blue: 0.941)
+        static let field = Color.white.opacity(0.72)
         static let ink = Color(red: 0.478, green: 0.122, blue: 0.122)         // #7A1F1F
         static let inkSoft = Color(red: 0.36, green: 0.22, blue: 0.20)
         static let inkFaint = Color(red: 0.53, green: 0.40, blue: 0.37)
@@ -32,9 +33,14 @@ enum Theme {
         static let danger = Color(red: 0.66, green: 0.08, blue: 0.10)
         static let hairline = oxblood.opacity(0.12)
         static let primaryGradient = LinearGradient(
-            colors: [periwinkle, Color(red: 0.31, green: 0.22, blue: 0.96)],
+            colors: [periwinkle, Color(red: 0.29, green: 0.34, blue: 0.88)],
             startPoint: .leading,
             endPoint: .trailing
+        )
+        static let warmGradient = LinearGradient(
+            colors: [orange, crush],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
         )
     }
 
@@ -65,6 +71,7 @@ enum Theme {
         static let xl: CGFloat = 24
         static let xxl: CGFloat = 32
         static let gutter: CGFloat = 20
+        static let screenBottom: CGFloat = 32
     }
 
     enum Radius {
@@ -95,11 +102,11 @@ extension View {
             .background {
                 RoundedRectangle(cornerRadius: Theme.Radius.m, style: .continuous)
                     .fill(fill)
-                    .shadow(color: Theme.Palette.oxblood.opacity(0.08), radius: 12, y: 6)
+                    .shadow(color: Theme.Palette.oxblood.opacity(0.075), radius: 14, y: 7)
             }
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.Radius.m, style: .continuous)
-                    .stroke(Theme.Palette.hairline, lineWidth: 1)
+                    .stroke(Theme.Palette.oxblood.opacity(0.10), lineWidth: 1)
             )
     }
 
@@ -108,6 +115,26 @@ extension View {
         self
             .padding(padding)
             .foregroundStyle(.white)
-            .background(Theme.Palette.ink, in: RoundedRectangle(cornerRadius: Theme.Radius.l, style: .continuous))
+            .background {
+                RoundedRectangle(cornerRadius: Theme.Radius.l, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [Theme.Palette.oxblood, Color(red: 0.58, green: 0.09, blue: 0.12)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .shadow(color: Theme.Palette.oxblood.opacity(0.22), radius: 16, y: 8)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: Theme.Radius.l, style: .continuous)
+                    .stroke(.white.opacity(0.14), lineWidth: 1)
+            }
+    }
+
+    /// Consistent space beneath long scroll content so controls never collide with
+    /// the floating tab bar, keyboard accessory, or the Home indicator.
+    func crushScrollPadding() -> some View {
+        padding(.bottom, Theme.Space.screenBottom)
     }
 }

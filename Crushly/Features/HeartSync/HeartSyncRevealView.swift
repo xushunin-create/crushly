@@ -15,6 +15,7 @@ struct HeartSyncRevealView: View {
     var body: some View {
         ZStack {
             RetroBackground()
+            matchBackdrop
 
             ScrollView {
             VStack(spacing: Theme.Space.xl) {
@@ -83,10 +84,8 @@ struct HeartSyncRevealView: View {
                     .animation(reduceMotion ? nil : .easeInOut(duration: 1.1).repeatForever(autoreverses: true).delay(Double(index) * 0.15), value: pulse)
             }
             HStack(spacing: together ? -34 : 92) {
-                Avatar(path: state.profile?.photoPaths.first, name: state.profile?.firstName ?? "", size: 128)
-                    .overlay(Circle().stroke(.white, lineWidth: 4))
-                Avatar(path: match.other.photoPaths.first, name: match.other.firstName, size: 128)
-                    .overlay(Circle().stroke(.white, lineWidth: 4))
+                portrait(path: state.profile?.photoPaths.first, name: state.profile?.firstName ?? "You")
+                portrait(path: match.other.photoPaths.first, name: match.other.firstName)
             }
             .scaleEffect(together ? 1 : 0.88)
             Image(systemName: "heart.fill")
@@ -123,5 +122,31 @@ struct HeartSyncRevealView: View {
             withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) { showReveal = true }
             UIAccessibility.post(notification: .announcement, argument: "Heart Sync. You matched with \(match.other.firstName).")
         }
+    }
+
+    private func portrait(path: String?, name: String) -> some View {
+        Avatar(path: path, name: name, size: 128)
+            .overlay(Circle().stroke(.white, lineWidth: 5))
+            .overlay(Circle().stroke(Theme.Palette.crush.opacity(0.28), lineWidth: 1))
+            .shadow(color: Theme.Palette.oxblood.opacity(0.14), radius: 14, y: 7)
+    }
+
+    private var matchBackdrop: some View {
+        GeometryReader { proxy in
+            ZStack {
+                Capsule()
+                    .fill(Theme.Palette.orange.opacity(0.10))
+                    .frame(width: proxy.size.width * 1.25, height: 82)
+                    .rotationEffect(.degrees(-8))
+                    .offset(x: -proxy.size.width * 0.12, y: proxy.size.height * 0.27)
+                Capsule()
+                    .fill(Theme.Palette.crush.opacity(0.09))
+                    .frame(width: proxy.size.width * 1.28, height: 96)
+                    .rotationEffect(.degrees(7))
+                    .offset(x: proxy.size.width * 0.08, y: proxy.size.height * 0.33)
+            }
+        }
+        .ignoresSafeArea()
+        .accessibilityHidden(true)
     }
 }

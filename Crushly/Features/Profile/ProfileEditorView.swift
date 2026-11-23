@@ -48,20 +48,23 @@ struct ProfileEditorView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Space.xl) {
                 if mode == .onboarding {
-                    VStack(alignment: .leading, spacing: Theme.Space.xs) {
-                        Text("Make a first impression.").font(Theme.Typeface.title)
+                    VStack(alignment: .leading, spacing: Theme.Space.s) {
+                        Text("Make a first impression.")
+                            .font(Theme.Typeface.title)
+                            .foregroundStyle(Theme.Palette.oxblood)
+                        Capsule().fill(Theme.Palette.crush).frame(width: 46, height: 4)
                         Text("Only people open to matching in the same campus space can see it.")
                             .font(Theme.Typeface.callout).foregroundStyle(Theme.Palette.inkSoft)
                     }
                 }
 
-                photos(draft)
-                basics(draft)
-                interests(draft)
-                vibes(draft)
-                prompt(draft)
-                intentions(draft)
-                matchingPreferences
+                photos(draft).editorSection()
+                basics(draft).editorSection()
+                interests(draft).editorSection()
+                vibes(draft).editorSection()
+                prompt(draft).editorSection()
+                intentions(draft).editorSection()
+                matchingPreferences.editorSection()
 
                 if showMissing, !(draft.wrappedValue.missingFields + preferences.missingFields).isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
@@ -81,8 +84,9 @@ struct ProfileEditorView: View {
                 .accessibilityIdentifier("profile.save")
             }
             .padding(Theme.Space.gutter)
-            .padding(.bottom, Theme.Space.xxl)
+            .crushScrollPadding()
         }
+        .scrollIndicators(.hidden)
         .scrollDismissesKeyboard(.interactively)
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -168,7 +172,7 @@ struct ProfileEditorView: View {
             }
             .padding(.horizontal, Theme.Space.l)
             .frame(minHeight: 54)
-            .background(Theme.Palette.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.s))
+            .background(Theme.Palette.field, in: RoundedRectangle(cornerRadius: Theme.Radius.s))
             choiceRow("Pronouns", options: ["she/her", "he/him", "they/them", "she/they", "he/they"], selection: draft.pronouns)
             choiceRow("Gender", options: ["Woman", "Man", "Non-binary"], selection: draft.gender)
         }
@@ -250,7 +254,7 @@ struct ProfileEditorView: View {
                 .lineLimit(2...4)
                 .font(Theme.Typeface.body)
                 .padding(Theme.Space.l)
-                .background(Theme.Palette.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.s))
+                .background(Theme.Palette.field, in: RoundedRectangle(cornerRadius: Theme.Radius.s))
                 .onChange(of: draft.wrappedValue.promptAnswer) { _, new in
                     if new.count > ProfileRules.promptMaxLength {
                         draft.wrappedValue.promptAnswer = String(new.prefix(ProfileRules.promptMaxLength))
@@ -332,7 +336,7 @@ struct ProfileEditorView: View {
         }
         .padding(.horizontal, Theme.Space.l)
         .frame(minHeight: 54)
-        .background(Theme.Palette.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.s))
+        .background(Theme.Palette.field, in: RoundedRectangle(cornerRadius: Theme.Radius.s))
     }
 
     // MARK: Helpers
@@ -342,7 +346,7 @@ struct ProfileEditorView: View {
             .font(Theme.Typeface.body)
             .padding(.horizontal, Theme.Space.l)
             .frame(minHeight: 54)
-            .background(Theme.Palette.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.s))
+            .background(Theme.Palette.field, in: RoundedRectangle(cornerRadius: Theme.Radius.s))
             .overlay(RoundedRectangle(cornerRadius: Theme.Radius.s).stroke(Theme.Palette.hairline))
     }
 
