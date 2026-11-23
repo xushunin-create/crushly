@@ -3,12 +3,14 @@ import SwiftUI
 /// Full-screen mutual match reveal. Covers the tab bar so the moment has focus.
 struct HeartSyncRevealView: View {
     let match: Conversation
+    var previewMode = false
 
     @Environment(AppState.self) private var state
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var together = false
     @State private var pulse = false
+    @State private var showReveal = false
 
     var body: some View {
         ZStack {
@@ -17,9 +19,10 @@ struct HeartSyncRevealView: View {
             ScrollView {
             VStack(spacing: Theme.Space.xl) {
                 Spacer(minLength: Theme.Space.l)
-                Text("Heart Sync")
+                Text(showReveal ? "Heart Sync" : "")
                     .font(Theme.Typeface.title)
                     .foregroundStyle(Theme.Palette.oxblood)
+                    .frame(height: 30)
 
                 portraits
 
@@ -32,12 +35,18 @@ struct HeartSyncRevealView: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("reveal.headline")
+                .opacity(showReveal ? 1 : 0)
+                .offset(y: showReveal ? 0 : 16)
 
                 Spacer(minLength: Theme.Space.l)
 
                 VStack(spacing: Theme.Space.m) {
-                    Button { state.openConversation(match.id) } label: {
-                        Label("Send a message", systemImage: "bubble.left.and.bubble.right.fill")
+                    Button {
+                        if previewMode { dismiss() }
+                        else { state.openConversation(match.id) }
+                    } label: {
+                        Label(previewMode ? "Close preview" : "Send a message",
+                              systemImage: previewMode ? "xmark" : "bubble.left.and.bubble.right.fill")
                     }
                     .buttonStyle(.crush)
                     .accessibilityIdentifier("reveal.message")
@@ -47,15 +56,16 @@ struct HeartSyncRevealView: View {
                         .foregroundStyle(Theme.Palette.inkSoft)
                         .frame(minHeight: Theme.minTap)
                 }
+                .opacity(showReveal ? 1 : 0)
+                .offset(y: showReveal ? 0 : 16)
+                .allowsHitTesting(showReveal)
             }
             .padding(Theme.Space.gutter)
             }
             .scrollBounceBehavior(.basedOnSize)
         }
         .onAppear {
-            withAnimation(reduceMotion ? .none : .spring(response: 0.8, dampingFraction: 0.65).delay(0.15)) { together = true }
-            if !reduceMotion { pulse = true }
-            UIAccessibility.post(notification: .announcement, argument: "Heart Sync. You matched with \(match.other.firstName).")
+            playReveal()
         }
     }
 
@@ -68,22 +78,23 @@ struct HeartSyncRevealView: View {
                         Circle().stroke(Theme.Palette.crush.opacity(0.30 - Double(index) * 0.07), lineWidth: 2)
                     }
                     .frame(width: CGFloat(220 + index * 50))
-                    .scaleEffect(pulse ? 1.15 : 0.85)
-                    .opacity(pulse ? 0.2 : 0.8)
+                    .scaleEffect(pulse ? 1.15 : 0.72)
+                    .opacity(pulse ? 0.18 : 0)
                     .animation(reduceMotion ? nil : .easeInOut(duration: 1.1).repeatForever(autoreverses: true).delay(Double(index) * 0.15), value: pulse)
             }
-            HStack(spacing: together ? -26 : 60) {
+            HStack(spacing: together ? -34 : 92) {
                 Avatar(path: state.profile?.photoPaths.first, name: state.profile?.firstName ?? "", size: 128)
                     .overlay(Circle().stroke(.white, lineWidth: 4))
                 Avatar(path: match.other.photoPaths.first, name: match.other.firstName, size: 128)
                     .overlay(Circle().stroke(.white, lineWidth: 4))
             }
+            .scaleEffect(together ? 1 : 0.88)
             Image(systemName: "heart.fill")
                 .font(.system(size: 44, weight: .bold))
                 .foregroundStyle(Theme.Palette.crush)
                 .padding(14)
                 .background(.white, in: Circle())
-                .overlay(SparkRays().offset(y: -48))
+                .overlay { if showReveal { SparkRays().offset(y: -48) } }
                 .offset(y: 70)
                 .scaleEffect(together ? 1 : 0.2)
                 .opacity(together ? 1 : 0)
@@ -91,5 +102,26 @@ struct HeartSyncRevealView: View {
         .frame(height: 260)
         .accessibilityElement()
         .accessibilityLabel("You and \(match.other.firstName)")
+    }
+
+    private func playReveal() {
+        guard !reduceMotion else {
+            together = true
+            pulse = true
+            showReveal = true
+            UIAccessibility.post(notification: .announcement, argument: "Heart Sync. You matched with \(match.other.firstName).")
+            return
+        }
+
+        withAnimation(.spring(response: 0.62, dampingFraction: 0.66).delay(0.12)) { together = true }
+        Task {
+            try? await Task.sleep(for: .milliseconds(560))
+            guard !Task.isCancelled else { return }
+            pulse = true
+            try? await Task.sleep(for: .milliseconds(430))
+            guard !Task.isCancelled else { return }
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) { showReveal = true }
+            UIAccessibility.post(notification: .announcement, argument: "Heart Sync. You matched with \(match.other.firstName).")
+        }
     }
 }

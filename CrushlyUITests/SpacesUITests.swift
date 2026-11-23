@@ -38,7 +38,7 @@ final class SpacesUITests: XCTestCase {
 
         let interest = app.buttons["interest.send"]
         XCTAssertTrue(interest.waitForExistence(timeout: 5))
-        interest.tap()
+        interest.press(forDuration: 0.7)
 
         // Mina was already interested: Heart Sync.
         XCTAssertTrue(app.element("reveal.headline").waitForExistence(timeout: 8))
