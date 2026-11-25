@@ -3,7 +3,6 @@ import SwiftUI
 /// Full-screen mutual match reveal. Covers the tab bar so the moment has focus.
 struct HeartSyncRevealView: View {
     let match: Conversation
-    var previewMode = false
 
     @Environment(AppState.self) private var state
     @Environment(\.dismiss) private var dismiss
@@ -42,12 +41,8 @@ struct HeartSyncRevealView: View {
                 Spacer(minLength: Theme.Space.l)
 
                 VStack(spacing: Theme.Space.m) {
-                    Button {
-                        if previewMode { dismiss() }
-                        else { state.openConversation(match.id) }
-                    } label: {
-                        Label(previewMode ? "Close preview" : "Send a message",
-                              systemImage: previewMode ? "xmark" : "bubble.left.and.bubble.right.fill")
+                    Button { state.openConversation(match.id) } label: {
+                        Label("Send a message", systemImage: "bubble.left.and.bubble.right.fill")
                     }
                     .buttonStyle(.crush)
                     .accessibilityIdentifier("reveal.message")

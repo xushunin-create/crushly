@@ -100,7 +100,6 @@ private struct UndimmedButtonStyle: ButtonStyle {
 struct InterestButton: View {
     let person: PublicProfile
     @Binding var justSent: Bool
-    var previewMode = false
 
     @Environment(AppState.self) private var state
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -114,7 +113,6 @@ struct InterestButton: View {
     private enum Availability { case canSend, sent, matched, limit, notParticipating }
 
     private var availability: Availability {
-        if previewMode { return justSent ? .sent : .canSend }
         if state.conversations.contains(where: { $0.other.id == person.id }) { return .matched }
         if justSent || state.sentInterests.contains(person.id) { return .sent }
         if !state.isParticipating { return .notParticipating }
@@ -272,17 +270,6 @@ struct InterestButton: View {
         isCharged = false
         chargeProgress = 0
         sending = true
-        if previewMode {
-            Task {
-                try? await Task.sleep(for: .milliseconds(300))
-                sending = false
-                justSent = true
-                popped = true
-                try? await Task.sleep(for: .milliseconds(250))
-                popped = false
-            }
-            return
-        }
         Task {
             do {
                 let result = try await state.expressInterest(in: person)

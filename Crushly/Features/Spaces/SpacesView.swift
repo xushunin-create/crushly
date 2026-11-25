@@ -5,15 +5,12 @@ import SwiftUI
 struct SpacesView: View {
     @Environment(AppState.self) private var state
     @State private var selected: PublicProfile?
-    @State private var showDesignPreview = false
-    @State private var showMatchPreview = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Space.xl) {
                 header
                 StatusCard()
-                if state.config.isDemo { demoPreviewControls }
                 if state.profile?.photoReviewStatus == .rejected { rejectedPhotoCard }
                 if state.shouldOfferNotifications { NotificationPrimerCard() }
                 if state.isParticipating { participatingContent }
@@ -31,10 +28,6 @@ struct SpacesView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .sheet(item: $selected) { person in PersonProfileView(person: person) }
-        .sheet(isPresented: $showDesignPreview) { DemoDesignPreviewView() }
-        .fullScreenCover(isPresented: $showMatchPreview) {
-            HeartSyncRevealView(match: DemoMotionPreview.match, previewMode: true)
-        }
     }
 
     private var header: some View {
@@ -52,29 +45,6 @@ struct SpacesView: View {
             .font(Theme.Typeface.subheadline.weight(.semibold))
             .foregroundStyle(Theme.Palette.danger)
             .crushCard(fill: Theme.Palette.crushSoft)
-    }
-
-    private var demoPreviewControls: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.m) {
-            HStack {
-                Label("Design previews", systemImage: "play.circle.fill")
-                    .font(Theme.Typeface.headline)
-                    .foregroundStyle(Theme.Palette.oxblood)
-                Spacer()
-                DemoBadge()
-            }
-            Text("View the radar and motion design without entering a matching space. Nothing here changes your demo matches.")
-                .font(Theme.Typeface.footnote)
-                .foregroundStyle(Theme.Palette.inkSoft)
-            HStack(spacing: Theme.Space.s) {
-                Button("Radar + send") { showDesignPreview = true }
-                    .buttonStyle(.crush(.secondary))
-                Button("Match animation") { showMatchPreview = true }
-                    .buttonStyle(.crush)
-            }
-        }
-        .crushCard(fill: Theme.Palette.blush.opacity(0.24))
-        .accessibilityIdentifier("demo.designPreviews")
     }
 
     @ViewBuilder private var participatingContent: some View {
@@ -256,72 +226,6 @@ private struct RadarPersonButton: View {
         .accessibilityLabel(sentInterest ? "\(person.firstName), interest sent" : person.firstName)
         .accessibilityHint("Opens profile")
         .accessibilityIdentifier("candidate.\(person.firstName)")
-    }
-}
-
-/// Demo-only surface that renders the shipping radar and hold-to-send control without a participation session.
-private struct DemoDesignPreviewView: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var previewSent = false
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Space.xl) {
-                    Text("Radar preview")
-                        .font(Theme.Typeface.title)
-                        .foregroundStyle(Theme.Palette.oxblood)
-                    Text("These fictional profiles exist only to preview the layout and motion.")
-                        .font(Theme.Typeface.callout)
-                        .foregroundStyle(Theme.Palette.inkSoft)
-                    RadarPeopleField(candidates: DemoMotionPreview.people, sentInterestIDs: []) { _ in }
-                    Divider()
-                    Text("Send animation")
-                        .font(Theme.Typeface.title2)
-                        .foregroundStyle(Theme.Palette.oxblood)
-                    InterestButton(person: DemoMotionPreview.people[0], justSent: $previewSent, previewMode: true)
-                    if previewSent {
-                        Button("Play again") { previewSent = false }
-                            .buttonStyle(.crush(.secondary))
-                    }
-                }
-                .padding(Theme.Space.gutter)
-            }
-            .background(Theme.Palette.paper)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
-        }
-    }
-}
-
-private enum DemoMotionPreview {
-    static let people: [PublicProfile] = [
-        person("0F0D20B1-8B6A-4B6D-9AA1-000000000001", "Mina", 21, "avatar:heart.fill|purple"),
-        person("0F0D20B1-8B6A-4B6D-9AA1-000000000002", "Theo", 22, "avatar:star.fill|blue"),
-        person("0F0D20B1-8B6A-4B6D-9AA1-000000000003", "Ava", 20, "avatar:sun.max.fill|orange"),
-        person("0F0D20B1-8B6A-4B6D-9AA1-000000000004", "Sam", 23, "avatar:music.note|mint"),
-        person("0F0D20B1-8B6A-4B6D-9AA1-000000000005", "Noor", 21, "avatar:sparkles|teal")
-    ]
-
-    static let match = Conversation(
-        id: UUID(uuidString: "0F0D20B1-8B6A-4B6D-9AA1-000000000099")!,
-        createdAt: .now,
-        other: people[0],
-        lastMessageAt: nil,
-        lastMessagePreview: nil,
-        lastMessageFromMe: nil,
-        unread: false
-    )
-
-    private static func person(_ id: String, _ name: String, _ age: Int, _ avatar: String) -> PublicProfile {
-        PublicProfile(
-            id: UUID(uuidString: id)!, firstName: name, age: age, pronouns: "", gender: "",
-            interests: [], vibeTags: [], promptQuestion: "", promptAnswer: "", intention: .figuringItOut,
-            availability: .either, photoPaths: [avatar], photoReviewStatus: .approved
-        )
     }
 }
 
