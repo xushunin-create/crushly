@@ -3,6 +3,7 @@ import SwiftUI
 /// Routes on `AppState.phase` and hosts the three main tabs.
 struct RootView: View {
     @Environment(AppState.self) private var state
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack {
@@ -54,6 +55,17 @@ struct RootView: View {
         .animation(Theme.Motion.soft, value: state.phase)
         .preferredColorScheme(.light)
         .tint(Theme.Palette.crushText)
+        // Background music plays only once the user is signed in and inside the app.
+        .onChange(of: state.phase, initial: true) { _, phase in
+            if phase == .ready {
+                FeedbackService.shared.startMusic()
+            } else {
+                FeedbackService.shared.stopMusic()
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            FeedbackService.shared.sceneDidChange(active: phase == .active)
+        }
     }
 }
 

@@ -4,6 +4,7 @@ struct MeView: View {
     @Environment(AppState.self) private var state
     @State private var verifiedOnly = false
     @State private var sounds = FeedbackService.shared.soundsEnabled
+    @State private var music = FeedbackService.shared.musicEnabled
     @State private var legal: TermsView.LegalDoc?
 
     var body: some View {
@@ -40,6 +41,8 @@ struct MeView: View {
                 NavigationLink("Notifications") { NotificationSettingsView() }
                 Toggle("Sounds", isOn: $sounds)
                     .onChange(of: sounds) { _, value in FeedbackService.shared.soundsEnabled = value }
+                Toggle("Background music", isOn: $music)
+                    .onChange(of: music) { _, value in FeedbackService.shared.musicEnabled = value }
             } header: { Text("Alerts") }
 
             Section("Legal") {

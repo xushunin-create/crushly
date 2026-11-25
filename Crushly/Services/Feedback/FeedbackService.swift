@@ -27,8 +27,23 @@ final class FeedbackService {
         set { UserDefaults.standard.set(newValue, forKey: "crushly.sounds") }
     }
 
+    /// User preference for the looping background music (Me › Alerts). Separate from `soundsEnabled`.
+    var musicEnabled: Bool {
+        get { UserDefaults.standard.object(forKey: "crushly.music") as? Bool ?? true }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "crushly.music")
+            updateMusic()
+        }
+    }
+
+    private static let musicVolume: Float = 0.4
+
     private var players: [String: AVAudioPlayer] = [:]
     private var configured = false
+    private var music: AVAudioPlayer?
+    /// True while the user is signed in and inside the app (`AppState.phase == .ready`).
+    private var musicWanted = false
+    private var sceneActive = true
 
     private init() {}
 
@@ -47,12 +62,80 @@ final class FeedbackService {
                 self.impact(.light, intensity: 0.7)
             }
         case .heartSync:
+            duckMusic(for: 2.2)
             sound("bell", volume: 0.85)
             heartbeatPair(delay: 0.1)
         case .success:
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         case .warning:
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        }
+    }
+
+    // MARK: Background music
+
+    /// Call once the user is signed in and inside the app. Fades the loop in.
+    func startMusic() {
+        musicWanted = true
+        updateMusic()
+    }
+
+    /// Call when the user leaves the main app (sign-out, account deletion). Fades out and rewinds.
+    func stopMusic() {
+        musicWanted = false
+        updateMusic()
+    }
+
+    /// Pauses the loop whenever the scene isn't active (app switcher, Control Center, background).
+    func sceneDidChange(active: Bool) {
+        sceneActive = active
+        updateMusic()
+    }
+
+    private var shouldPlayMusic: Bool { musicWanted && musicEnabled && sceneActive }
+
+    private func updateMusic() {
+        if shouldPlayMusic {
+            guard let player = musicPlayer() else { return }
+            if !player.isPlaying {
+                player.volume = 0
+                player.play()
+            }
+            player.setVolume(Self.musicVolume, fadeDuration: 1.5)
+        } else if let player = music, player.isPlaying {
+            guard sceneActive else {
+                // Leaving the foreground: don't rely on a fade finishing while suspended.
+                player.pause()
+                return
+            }
+            player.setVolume(0, fadeDuration: 0.6)
+            after(0.65) { [weak self] in
+                guard let self, !self.shouldPlayMusic else { return }
+                self.music?.pause()
+                if !self.musicWanted { self.music?.currentTime = 0 }
+            }
+        }
+    }
+
+    private func musicPlayer() -> AVAudioPlayer? {
+        if let music { return music }
+        configureIfNeeded()
+        guard let url = Bundle.main.url(forResource: "bgm", withExtension: "mp3"),
+              let player = try? AVAudioPlayer(contentsOf: url) else { return nil }
+        player.numberOfLoops = -1
+        player.volume = 0
+        player.prepareToPlay()
+        music = player
+        return player
+    }
+
+    /// Briefly lowers the music so a moment sound (the match bell) stands out.
+    private func duckMusic(for seconds: TimeInterval) {
+        guard let player = music, player.isPlaying else { return }
+        player.setVolume(Self.musicVolume * 0.3, fadeDuration: 0.3)
+        after(seconds) { [weak self] in
+            guard let self, self.shouldPlayMusic else { return }
+            self.music?.setVolume(Self.musicVolume, fadeDuration: 1.0)
         }
     }
 
