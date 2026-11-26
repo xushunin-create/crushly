@@ -23,7 +23,8 @@ protocol ProfileService: AnyObject {
     /// `update_match_preferences`. Required before participating.
     func updateMatchPreferences(_ preferences: MatchPreferences) async throws
     func acceptTerms(termsVersion: String, privacyVersion: String, ageConfirmed: Bool) async throws
-    /// Uploads JPEG data and returns the stored path. New photos enter review as `pending`.
+    /// Uploads JPEG data and returns the stored path. Photos are live as soon as the profile is saved. Callers go
+    /// through `AppState.uploadPhoto`, which runs the on-device explicit-content check first.
     func uploadPhoto(_ jpeg: Data) async throws -> String
     func deletePhoto(path: String) async throws
     /// A short-lived URL for displaying a stored photo, or nil when the path is not a remote photo.
@@ -58,8 +59,15 @@ protocol ConversationService: AnyObject {
     func conversations() async throws -> [Conversation]
     /// Newest first. Pass the oldest message you have as `before` to page back.
     func fetchMessages(matchID: UUID, before: MessageCursor?, limit: Int) async throws -> [ChatMessage]
-    /// Retry-safe: the same `clientMessageID` never creates a second message.
-    func sendMessage(matchID: UUID, clientMessageID: UUID, body: String) async throws -> SentMessageReceipt
+    /// Retry-safe: the same `clientMessageID` never creates a second message. `replyToID` quotes an earlier live text
+    /// message in the same conversation.
+    func sendMessage(matchID: UUID, clientMessageID: UUID, body: String, replyToID: UUID?) async throws -> SentMessageReceipt
+    /// Sets the caller's one reaction on a message; `nil` removes it.
+    func react(messageID: UUID, emoji: String?) async throws
+    /// Unsends one of the caller's own text messages for both people. Idempotent.
+    func unsendMessage(messageID: UUID) async throws
+    /// Records a content-free "took a screenshot" notice in the conversation. Bursts collapse into one.
+    func recordScreenshot(matchID: UUID) async throws -> SentMessageReceipt
     func markConversationRead(matchID: UUID) async throws
     /// Ends the match and deletes the conversation for both people.
     func leaveConversation(matchID: UUID) async throws
@@ -112,6 +120,12 @@ nonisolated enum AnalyticsEvent: String, Sendable, CaseIterable {
     case notificationOpened = "notification_opened"
     case notificationPrefsChanged = "notification_prefs_changed"
     case accountDeleted = "account_deleted"
+}
+
+extension ConversationService {
+    func sendMessage(matchID: UUID, clientMessageID: UUID, body: String) async throws -> SentMessageReceipt {
+        try await sendMessage(matchID: matchID, clientMessageID: clientMessageID, body: body, replyToID: nil)
+    }
 }
 
 extension AuthService {

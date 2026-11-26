@@ -40,7 +40,7 @@ struct SpacesView: View {
     }
 
     private var rejectedPhotoCard: some View {
-        Label("Your photo wasn't approved, so you can't match until you add a new one in Me › Edit profile.",
+        Label("A moderator removed your photo, so you can't match until you add a new one in Me › Edit profile.",
               systemImage: "exclamationmark.triangle.fill")
             .font(Theme.Typeface.subheadline.weight(.semibold))
             .foregroundStyle(Theme.Palette.danger)

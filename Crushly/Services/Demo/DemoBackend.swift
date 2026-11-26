@@ -69,6 +69,8 @@ final class DemoBackend: CrushlyBackend {
     var simulateOfflineSends = 0
     /// Fault injection: the next N sends are stored, but the response is "lost" (the client sees a timeout).
     var simulateLostResponses = 0
+    /// Fault injection: the next N photo uploads are refused as explicit.
+    var simulateFlaggedPhotos = 0
 
     /// What the demo "moderators" received. Exposed for tests and the demo cast sheet.
     private(set) var submittedReports: [DemoReport] = []
@@ -106,8 +108,14 @@ final class DemoBackend: CrushlyBackend {
     struct DemoMessage: Equatable {
         let id: UUID
         let senderID: UUID
-        let body: String
+        var body: String
         let createdAt: Date
+        var kind: ChatMessage.Kind = .text
+        var deleted = false
+        var replyToID: UUID? = nil
+        /// user id → emoji, one per person.
+        var reactions: [UUID: String] = [:]
+        var reactionOrder: [UUID] = []
     }
 
     struct DemoReport: Equatable {
@@ -137,6 +145,8 @@ final class DemoBackend: CrushlyBackend {
             interests: ["Music", "Design", "Coffee"], vibeTags: ["Night owl", "Deep talks"],
             promptQuestion: ProfilePrompts.all[1], promptAnswer: "McCarthy Quad with an iced latte.",
             intention: .figuringItOut, availability: .either, photoPaths: ["avatar:heart.fill|pink"],
+            // A built-in placeholder avatar, not an uploaded photo, so it carries no checkmark. That keeps the
+            // verified-only scenario (Sam) visible in the demo until you add a real photo.
             photoReviewStatus: .pending
         )
     }
@@ -153,7 +163,7 @@ final class DemoBackend: CrushlyBackend {
         runDueScripts()
     }
 
-    /// Demo-only: simulates the photo moderation decision that a reviewer would make in production.
+    /// Demo-only: simulates a moderator decision (e.g. removing photos after a report).
     func simulatePhotoReview(_ status: ReviewStatus) {
         profile?.photoReviewStatus = status
     }
@@ -201,7 +211,14 @@ final class DemoBackend: CrushlyBackend {
         let index = replyCursor[match.other, default: 0]
         guard index < lines.count else { return }
         replyCursor[match.other] = index + 1
-        appendMessage(DemoMessage(id: UUID(), senderID: match.other, body: lines[index], createdAt: nextMessageTime(in: matchID)),
+        // Their first reply hearts your latest message, like a tapback, and quotes it.
+        let mineLatest = messages[matchID]?.last(where: { $0.senderID == myID && $0.kind == .text && !$0.deleted })
+        if index == 0, let mineLatest, let at = messages[matchID]?.firstIndex(where: { $0.id == mineLatest.id }) {
+            messages[matchID]?[at].reactions[match.other] = "❤️"
+            messages[matchID]?[at].reactionOrder.append(match.other)
+        }
+        appendMessage(DemoMessage(id: UUID(), senderID: match.other, body: lines[index], createdAt: nextMessageTime(in: matchID),
+                                  replyToID: index == 0 ? mineLatest?.id : nil),
                       to: matchID)
     }
 
@@ -421,9 +438,10 @@ final class DemoBackend: CrushlyBackend {
         guard saved.interests.count == ProfileRules.interestCount else {
             throw CrushlyError.invalidInput("Pick exactly \(ProfileRules.interestCount) interests.")
         }
-        // Server-only fields cannot be changed by the client.
+        // Server-only fields cannot be changed by the client. Like profiles_guard: photos are live as soon as they're
+        // saved, so a photo change makes the profile approved straight away.
         saved.photoReviewStatus = profile?.photoReviewStatus ?? .pending
-        if let old = profile, old.photoPaths != saved.photoPaths { saved.photoReviewStatus = .pending }
+        if profile?.photoPaths != saved.photoPaths { saved.photoReviewStatus = saved.photoPaths.isEmpty ? .pending : .approved }
         saved.selfieStatus = profile?.selfieStatus ?? .notStarted
         saved.universityDomain = "usc.edu"
         profile = saved
@@ -455,6 +473,11 @@ final class DemoBackend: CrushlyBackend {
 
     func uploadPhoto(_ jpeg: Data) async throws -> String {
         try await pause()
+        // Fault injection for tests and the demo controls (the real check runs on the device, in AppState).
+        if simulateFlaggedPhotos > 0 {
+            simulateFlaggedPhotos -= 1
+            throw CrushlyError.photoRejected
+        }
         let path = "demo/\(UUID().uuidString).jpg"
         photoStore[path] = jpeg
         return path
@@ -643,11 +666,12 @@ final class DemoBackend: CrushlyBackend {
             .filter { !isBlockedBetween(myID, $0.other) }
             .compactMap { match -> Conversation? in
                 guard let other = people[match.other]?.profile else { return nil }
-                let last = messages[match.id]?.last
+                let last = messages[match.id]?.last(where: { !$0.deleted })
                 let unread = last.map { $0.senderID != myID && $0.createdAt > (match.myLastReadAt ?? .distantPast) } ?? false
                 return Conversation(id: match.id, createdAt: match.createdAt, other: other, lastMessageAt: last?.createdAt,
-                                    lastMessagePreview: last.map { String($0.body.prefix(80)) },
-                                    lastMessageFromMe: last.map { $0.senderID == myID }, unread: unread)
+                                    lastMessagePreview: last.flatMap { $0.kind == .text ? String($0.body.prefix(80)) : nil },
+                                    lastMessageFromMe: last.map { $0.senderID == myID }, unread: unread,
+                                    lastMessageKind: last?.kind)
             }
             .sorted { ($0.lastMessageAt ?? $0.createdAt) > ($1.lastMessageAt ?? $1.createdAt) }
     }
@@ -666,10 +690,84 @@ final class DemoBackend: CrushlyBackend {
             .sorted { key($0.createdAt, $0.id) > key($1.createdAt, $1.id) }
             .filter { m in before.map { key(m.createdAt, m.id) < key($0.createdAt, $0.id) } ?? true }
             .prefix(max(1, min(limit, 50)))
-            .map { ChatMessage(id: $0.id, senderIsMe: $0.senderID == myID, body: $0.body, createdAt: $0.createdAt) }
+            .map { chatMessage($0, in: matchID) }
     }
 
-    func sendMessage(matchID: UUID, clientMessageID: UUID, body: String) async throws -> SentMessageReceipt {
+    private func chatMessage(_ m: DemoMessage, in matchID: UUID) -> ChatMessage {
+        let quoted = m.replyToID.flatMap { id in messages[matchID]?.first { $0.id == id } }
+        return ChatMessage(
+            id: m.id, senderIsMe: m.senderID == myID, body: m.body, createdAt: m.createdAt, kind: m.kind, isDeleted: m.deleted,
+            replyTo: quoted.map { ReplyPreview(id: $0.id, body: $0.deleted ? "" : String($0.body.prefix(140)),
+                                               senderIsMe: $0.senderID == myID, isDeleted: $0.deleted) },
+            reactions: m.reactionOrder.compactMap { user in m.reactions[user].map { MessageReaction(emoji: $0, fromMe: user == myID) } })
+    }
+
+    private func messageIndex(_ messageID: UUID) throws -> (match: UUID, index: Int) {
+        for (match, list) in messages {
+            if let index = list.firstIndex(where: { $0.id == messageID }) {
+                _ = try requireParticipant(match)
+                return (match, index)
+            }
+        }
+        throw CrushlyError.notFound
+    }
+
+    func react(messageID: UUID, emoji: String?) async throws {
+        try await pause()
+        try requireSignedIn()
+        let (match, index) = try messageIndex(messageID)
+        guard let message = messages[match]?[index], message.kind == .text, !message.deleted else {
+            throw CrushlyError.invalidInput("Please check what you entered.")
+        }
+        let value = emoji?.trimmingCharacters(in: .whitespaces)
+        if let value, !value.isEmpty,
+           value.unicodeScalars.count > 16
+            || value.unicodeScalars.contains(where: { ($0.isASCII && ($0.properties.isAlphabetic || ("0"..."9").contains($0)))
+                                                      || $0.properties.isWhitespace || $0 == "<" || $0 == ">" }) {
+            throw CrushlyError.invalidInput("Please check what you entered.")
+        }
+        try enforceRateLimit("reaction", [(60, 60), (1000, 86400)])
+        if let value, !value.isEmpty {
+            messages[match]?[index].reactions[myID] = value
+            messages[match]?[index].reactionOrder.removeAll { $0 == myID }
+            messages[match]?[index].reactionOrder.append(myID)
+        } else {
+            messages[match]?[index].reactions[myID] = nil
+            messages[match]?[index].reactionOrder.removeAll { $0 == myID }
+        }
+        poke(.message, match)
+    }
+
+    func unsendMessage(messageID: UUID) async throws {
+        try await pause()
+        try requireSignedIn()
+        let (match, index) = try messageIndex(messageID)
+        guard let message = messages[match]?[index], message.senderID == myID else { throw CrushlyError.notFound }
+        guard message.kind == .text else { throw CrushlyError.invalidInput("Please check what you entered.") }
+        if message.deleted { return }
+        try enforceRateLimit("unsend", [(30, 60), (300, 86400)])
+        messages[match]?[index].deleted = true
+        messages[match]?[index].body = ""
+        messages[match]?[index].reactions = [:]
+        messages[match]?[index].reactionOrder = []
+        poke(.message, match)
+    }
+
+    func recordScreenshot(matchID: UUID) async throws -> SentMessageReceipt {
+        try await pause()
+        try requireSignedIn()
+        _ = try requireParticipant(matchID)
+        if let recent = messages[matchID]?.last(where: { $0.senderID == myID && $0.kind == .screenshot }),
+           now().timeIntervalSince(recent.createdAt) < 10 {
+            return SentMessageReceipt(id: recent.id, createdAt: recent.createdAt)
+        }
+        try enforceRateLimit("screenshot", [(6, 60), (100, 86400)])
+        let message = DemoMessage(id: UUID(), senderID: myID, body: "", createdAt: nextMessageTime(in: matchID), kind: .screenshot)
+        appendMessage(message, to: matchID)
+        return SentMessageReceipt(id: message.id, createdAt: message.createdAt)
+    }
+
+    func sendMessage(matchID: UUID, clientMessageID: UUID, body: String, replyToID: UUID?) async throws -> SentMessageReceipt {
         try await pause()
         if simulateOfflineSends > 0 { simulateOfflineSends -= 1; throw URLError(.notConnectedToInternet) }
         try requireSignedIn()
@@ -683,8 +781,12 @@ final class DemoBackend: CrushlyBackend {
         }
         let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.count <= rules.messageMaxChars else { throw CrushlyError.invalidInput("Messages must be 1–\(rules.messageMaxChars) characters.") }
+        if let replyToID, !(messages[matchID] ?? []).contains(where: { $0.id == replyToID && $0.kind == .text && !$0.deleted }) {
+            throw CrushlyError.invalidInput("That message can't be replied to.")
+        }
         try enforceRateLimit("message", [(20, 60), (500, 86400)])
-        let message = DemoMessage(id: clientMessageID, senderID: myID, body: trimmed, createdAt: nextMessageTime(in: matchID))
+        let message = DemoMessage(id: clientMessageID, senderID: myID, body: trimmed, createdAt: nextMessageTime(in: matchID),
+                                  replyToID: replyToID)
         appendMessage(message, to: matchID)
         schedule(after: options.replyDelay) { [weak self] in self?.scriptedReply(in: matchID) }
         if simulateLostResponses > 0 { simulateLostResponses -= 1; throw URLError(.timedOut) }
@@ -748,7 +850,7 @@ final class DemoBackend: CrushlyBackend {
             // Only messages from the conversation with this person, and only those the reporter selected.
             let wanted = Set(evidenceMessageIDs)
             guard let match = matchBetween(myID, userID) else { throw CrushlyError.invalidInput("Please check your report.") }
-            evidence = (messages[match] ?? []).filter { wanted.contains($0.id) }
+            evidence = (messages[match] ?? []).filter { wanted.contains($0.id) && $0.kind == .text && !$0.deleted }
             guard evidence.count == wanted.count else { throw CrushlyError.invalidInput("Please check your report.") }
         }
         let trimmed = details.trimmingCharacters(in: .whitespacesAndNewlines)

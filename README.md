@@ -34,7 +34,8 @@ Design: [docs/CAMPUS_SPACES_DESIGN.md](docs/CAMPUS_SPACES_DESIGN.md) · Server c
 ### Demo walkthrough (about 5 minutes)
 
 Run with `-CrushlyDemo -CrushlyDemoSeeded -CrushlyDemoLocation upc-mccarthy-quad`. **Me → Demo controls** moves the
-simulated location, changes the simulated permission, skips time, simulates photo review and lists what each person does.
+simulated location, changes the simulated permission, skips time, simulates a moderator removing your photo or an
+explicit upload being blocked (the real on-device check can't run in the Simulator), and lists what each person does.
 
 1. **Spaces → Turn on campus matching.** After two stable fixes (~8 s) the sheet asks *"Open to matching here?"*.
    Try **Stay invisible** first: the status card says so, and you won't be asked again this visit.
@@ -42,7 +43,10 @@ simulated location, changes the simulated permission, skips time, simulates phot
    you), Sam (verified-only) and Rio (another space) never appear.
 3. **"Someone here is interested"** appears with no name, time or count detail (that's Mina).
 4. **Private interest:** open **Noah** → **I'm interested**. He never reciprocates; nothing is revealed.
-5. **Heart Sync:** open **Mina** → **I'm interested** → the reveal → **Send a message**. She replies.
+5. **Heart Sync:** open **Mina** → **I'm interested** → the reveal → **Send a message**. She hearts your message and
+   replies to it. Long-press a message to react, reply, copy or unsend it; swipe a message right to reply; double-tap
+   to heart. Take a screenshot (on a device, or the Simulator's Device → Trigger Screenshot) and a "You took a screenshot"
+   notice appears.
 6. **Delayed match:** show interest in **Alex**; about 20 s later the reveal appears on its own.
 7. **Leaving deletes interests:** Jamie shows interest, then leaves after 3 minutes; their interest is gone with them.
 8. **Leave the space** (Demo controls → *Outside*): you're revoked immediately. **Skip ahead 2 minutes** while inside:
@@ -56,7 +60,8 @@ simulated location, changes the simulated permission, skips time, simulates phot
 1. Copy `Config/Secrets.example.plist` to `Crushly/Resources/Secrets.plist` (git-ignored) with the **Project URL** and
    **anon / publishable key**. Never put the service-role key in the app.
 2. Apply the migrations in order in the SQL Editor: `20261110000000_init`, `20261111000000_notifications`,
-   `20261116000000_campus_spaces`, `20261117000000_draft_usc_spaces`, `20261118000000_realtime_pokes`, then `seed.sql`.
+   `20261116000000_campus_spaces`, `20261117000000_draft_usc_spaces`, `20261118000000_realtime_pokes`, then the rest of
+   `supabase/migrations/` in filename order (through `20261126000000_chat_and_live_photos`), then `seed.sql`.
 3. For development only, enable draft zones: `update app_settings set value = 'true' where key = 'allow_draft_spaces';`
    (production must keep `false`).
 4. Realtime → Settings: turn off **Allow public access**. Auth: OTP email template with `{{ .Token }}`; custom SMTP for

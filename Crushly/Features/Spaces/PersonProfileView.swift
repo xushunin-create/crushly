@@ -80,9 +80,6 @@ struct PersonProfileView: View {
             }
             Label(person.intention.title, systemImage: "heart.text.square")
                 .font(Theme.Typeface.callout.weight(.semibold))
-            if person.photoReviewStatus != .approved {
-                Text("Photos not yet reviewed.").font(Theme.Typeface.footnote).foregroundStyle(Theme.Palette.inkSoft)
-            }
         }
     }
 }

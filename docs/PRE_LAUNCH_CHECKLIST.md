@@ -29,7 +29,8 @@ launch: it checks most of §1, the dev account, enabled zones and the photo buck
   No read path depends on the tick (every check uses `lease_expires_at > now()`), but retention does.
 - [ ] All migrations applied in order: `20261110000000_init`, `20261111000000_notifications`,
   `20261116000000_campus_spaces`, `20261117000000_draft_usc_spaces`, `20261118000000_realtime_pokes`,
-  `20261119000000_discovery_min_two`, `20261120000000_indoor_zones_iyh`. Check with
+  `20261119000000_discovery_min_two`, `20261120000000_indoor_zones_iyh`, `20261121000000_review_sign_in`,
+  `20261126000000_chat_and_live_photos`. Check with
   `npx supabase db push --remote --dry-run` (expect "up to date"). *(2026-11-17: the first five were applied by hand and
   recorded with `migration repair`; `discovery_min_two` was pushed.)*
 - [ ] Review the other `app_settings` values (discovery minimum of 2, 8 results, 5 interests per visit, 30–90 s receipt
@@ -79,6 +80,9 @@ zone is `field_validated`, nobody can join a space on the production backend.**
   confirm the push arrives (`net._http_response` shows `sent ≥ 1`).
 - [x] **Redeploy edge functions** *(2026-11-17: both deployed; until then `delete-account` was missing in production)* from the current source: `push-dispatch` (Verify JWT off; copy is now "You have a new
   match." / "You have a new message.") and `delete-account` (Verify JWT on).
+- [ ] **On-device photo check on a real iPhone** (it can't run in the Simulator): a normal photo uploads and goes live;
+  an explicit test image is refused before upload. Tune `PhotoSafetyCheck.blockThreshold` (0.85) if it blocks
+  ordinary photos or misses explicit ones. Keep `NSFW-LICENSE.txt` in the bundle (BSD-3 attribution).
 - [ ] **Account deletion end to end:** delete a throwaway account from the app and confirm it is gone.
 - [ ] Supabase Auth rate limits for OTP send/verify reviewed (they are not enforced in SQL).
 
@@ -120,7 +124,10 @@ zone is `field_validated`, nobody can join a space on the production backend.**
   `LegalDocuments.isPlaceholder` (and the in-app "Draft" banner) turns off automatically once no `[[` remains.
   The privacy policy must say: location is evaluated on the device; the server receives only a space id with a 60 s
   lease; messages are **not end-to-end encrypted** and the operator can technically read them; report evidence is kept
-  90 days; deleted data persists in backups until they age out; people matching in a space can infer co-presence.
+  90 days; deleted data persists in backups until they age out; people matching in a space can infer co-presence;
+  profile photos are checked on the device for explicit content before upload (nothing is sent for it); unsending a
+  message deletes its text, but the other person may already have seen it; the app tells the other person when you
+  screenshot a chat (and can't detect screenshots taken with another device).
 - [ ] A named moderation owner and review process ([MODERATION.md](MODERATION.md)), including access to
   `report_evidence` (service role only) and the 90-day purge.
 - [ ] Restore runbook (only matters once the project has backups; the Free plan has none): after any database restore, wipe `participation_sessions` and re-apply deletions from

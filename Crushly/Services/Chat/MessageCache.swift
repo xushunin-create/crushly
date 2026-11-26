@@ -8,6 +8,7 @@ nonisolated struct PendingMessage: Identifiable, Codable, Equatable, Hashable, S
     var body: String
     var createdAt: Date
     var state: State
+    var replyTo: ReplyPreview? = nil
 }
 
 /// On-device cache of conversations (docs/CAMPUS_SPACES_DESIGN.md §6.5).

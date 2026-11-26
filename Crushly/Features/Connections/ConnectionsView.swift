@@ -53,18 +53,13 @@ struct ConversationRow: View {
     let conversation: Conversation
 
     var body: some View {
-        PersonRow(person: conversation.other, detail: preview)
+        PersonRow(person: conversation.other, detail: conversation.previewLine)
             .overlay(alignment: .topTrailing) {
                 if conversation.unread {
                     Circle().fill(Theme.Palette.crush).frame(width: 12, height: 12).padding(Theme.Space.m)
                         .accessibilityLabel("Unread")
                 }
             }
-    }
-
-    private var preview: String {
-        guard let text = conversation.lastMessagePreview else { return "New match. Say hi!" }
-        return conversation.lastMessageFromMe == true ? "You: \(text)" : text
     }
 }
 

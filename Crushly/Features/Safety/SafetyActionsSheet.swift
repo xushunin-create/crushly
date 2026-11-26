@@ -14,7 +14,8 @@ struct SafetyActionsSheet: View {
     @State private var evidence: Set<UUID> = []
     @State private var confirmBlock = false
 
-    private var messages: [ChatMessage] { matchID.map { state.thread($0).messages } ?? [] }
+    /// Only live text can be evidence: unsent messages and screenshot notices carry nothing.
+    private var messages: [ChatMessage] { matchID.map { state.thread($0).messages.filter(\.isLiveText) } ?? [] }
 
     var body: some View {
         NavigationStack {

@@ -46,7 +46,7 @@ final class AccessibilityUITests: XCTestCase {
         app.buttons["candidate.Mina"].reveal(in: app).tap()
         XCTAssertTrue(app.buttons["interest.send"].waitForExistence(timeout: 5))
         audit(app, "Profile")
-        app.buttons["interest.send"].tap()
+        app.holdToSendInterest()
         XCTAssertTrue(app.buttons["reveal.message"].waitForExistence(timeout: 8))
         audit(app, "Heart Sync")
         app.buttons["reveal.message"].tap()

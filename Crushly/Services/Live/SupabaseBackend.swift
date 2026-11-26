@@ -293,10 +293,29 @@ final class SupabaseBackend: CrushlyBackend {
         return rows.map(\.domain)
     }
 
-    func sendMessage(matchID: UUID, clientMessageID: UUID, body: String) async throws -> SentMessageReceipt {
-        nonisolated struct Params: Encodable { let p_match_id: UUID; let p_client_message_id: UUID; let p_body: String }
-        let rows: [SentMessageDTO] = try await call("send_message",
-                                                    Params(p_match_id: matchID, p_client_message_id: clientMessageID, p_body: body))
+    func sendMessage(matchID: UUID, clientMessageID: UUID, body: String, replyToID: UUID?) async throws -> SentMessageReceipt {
+        nonisolated struct Params: Encodable {
+            let p_match_id: UUID; let p_client_message_id: UUID; let p_body: String; let p_reply_to_id: UUID?
+        }
+        let rows: [SentMessageDTO] = try await call("send_message", Params(
+            p_match_id: matchID, p_client_message_id: clientMessageID, p_body: body, p_reply_to_id: replyToID))
+        guard let row = rows.first else { throw CrushlyError.notFound }
+        return SentMessageReceipt(id: row.id, createdAt: row.created_at)
+    }
+
+    func react(messageID: UUID, emoji: String?) async throws {
+        nonisolated struct Params: Encodable { let p_message_id: UUID; let p_emoji: String? }
+        try await callVoid("react_to_message", Params(p_message_id: messageID, p_emoji: emoji))
+    }
+
+    func unsendMessage(messageID: UUID) async throws {
+        nonisolated struct Params: Encodable { let p_message_id: UUID }
+        try await callVoid("unsend_message", Params(p_message_id: messageID))
+    }
+
+    func recordScreenshot(matchID: UUID) async throws -> SentMessageReceipt {
+        nonisolated struct Params: Encodable { let p_match_id: UUID }
+        let rows: [SentMessageDTO] = try await call("record_screenshot", Params(p_match_id: matchID))
         guard let row = rows.first else { throw CrushlyError.notFound }
         return SentMessageReceipt(id: row.id, createdAt: row.created_at)
     }

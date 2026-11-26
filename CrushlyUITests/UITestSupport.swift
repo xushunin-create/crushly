@@ -38,6 +38,19 @@ extension XCUIApplication {
         XCTAssertTrue(staticTexts["consent.title"].waitForExistence(timeout: 20), "consent sheet appears", file: file, line: line)
     }
 
+    /// The interest button is hold-to-send (≥ 0.6 s). Waits for the profile sheet to settle first, and retries if a
+    /// press landed while it was still animating.
+    func holdToSendInterest(file: StaticString = #filePath, line: UInt = #line) {
+        let button = buttons["interest.send"]
+        XCTAssertTrue(button.waitForExistence(timeout: 5), file: file, line: line)
+        for _ in 0..<3 {
+            usleep(800_000)
+            guard button.exists, button.isHittable else { return }
+            button.press(forDuration: 1.2)
+            if buttons["reveal.message"].waitForExistence(timeout: 5) { return }
+        }
+    }
+
     func openToMatching(file: StaticString = #filePath, line: UInt = #line) {
         turnOnAndWaitForConsent(file: file, line: line)
         buttons["consent.open"].tap()

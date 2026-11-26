@@ -218,21 +218,34 @@ nonisolated struct ConversationDTO: Decodable, Sendable {
     var last_message_preview: String?
     var last_message_from_me: Bool?
     var unread: Bool?
+    var last_message_kind: String?
 
     var domain: Conversation {
         Conversation(id: match_id, createdAt: created_at, other: other.domain, lastMessageAt: last_message_at,
-                     lastMessagePreview: last_message_preview, lastMessageFromMe: last_message_from_me, unread: unread ?? false)
+                     lastMessagePreview: last_message_preview, lastMessageFromMe: last_message_from_me, unread: unread ?? false,
+                     lastMessageKind: last_message_kind.flatMap(ChatMessage.Kind.init(rawValue:)))
     }
 }
 
 nonisolated struct MessageDTO: Decodable, Sendable {
+    nonisolated struct ReactionDTO: Decodable, Sendable { var emoji: String; var mine: Bool }
+
     var id: UUID
     var sender_is_me: Bool
     var body: String
     /// Kept at full microsecond precision: it is half of the keyset cursor.
     var created_at: Date
+    var kind: String?
+    var deleted: Bool?
+    var reply_to_id: UUID?
+    var reply_body: String?
+    var reply_sender_is_me: Bool?
+    var reply_deleted: Bool?
+    var reactions: [ReactionDTO]?
 
-    private enum CodingKeys: String, CodingKey { case id, sender_is_me, body, created_at }
+    private enum CodingKeys: String, CodingKey {
+        case id, sender_is_me, body, created_at, kind, deleted, reply_to_id, reply_body, reply_sender_is_me, reply_deleted, reactions
+    }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -244,9 +257,25 @@ nonisolated struct MessageDTO: Decodable, Sendable {
             throw DecodingError.dataCorruptedError(forKey: .created_at, in: c, debugDescription: "Bad timestamp")
         }
         created_at = date
+        kind = try c.decodeIfPresent(String.self, forKey: .kind)
+        deleted = try c.decodeIfPresent(Bool.self, forKey: .deleted)
+        reply_to_id = try c.decodeIfPresent(UUID.self, forKey: .reply_to_id)
+        reply_body = try c.decodeIfPresent(String.self, forKey: .reply_body)
+        reply_sender_is_me = try c.decodeIfPresent(Bool.self, forKey: .reply_sender_is_me)
+        reply_deleted = try c.decodeIfPresent(Bool.self, forKey: .reply_deleted)
+        reactions = try c.decodeIfPresent([ReactionDTO].self, forKey: .reactions)
     }
 
-    var domain: ChatMessage { ChatMessage(id: id, senderIsMe: sender_is_me, body: body, createdAt: created_at) }
+    var domain: ChatMessage {
+        ChatMessage(id: id, senderIsMe: sender_is_me, body: body, createdAt: created_at,
+                    kind: kind.flatMap(ChatMessage.Kind.init(rawValue:)) ?? .text,
+                    isDeleted: deleted ?? false,
+                    replyTo: reply_to_id.map {
+                        ReplyPreview(id: $0, body: reply_body ?? "", senderIsMe: reply_sender_is_me ?? false,
+                                     isDeleted: reply_deleted ?? false)
+                    },
+                    reactions: (reactions ?? []).map { MessageReaction(emoji: $0.emoji, fromMe: $0.mine) })
+    }
 }
 
 /// Postgres timestamps carry microseconds; the SDK's default date coding keeps only milliseconds, which would make a

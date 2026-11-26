@@ -133,7 +133,7 @@ nonisolated struct MatchPreferences: Codable, Equatable, Sendable {
 
     var missingFields: [String] {
         var missing: [String] = []
-        if matchGender == nil { missing.append("I am") }
+        if matchGender == nil { missing.append("Gender") }
         if showMe.isEmpty { missing.append("Show me") }
         return missing
     }
@@ -209,13 +209,73 @@ nonisolated struct Conversation: Identifiable, Equatable, Hashable, Sendable {
     var lastMessagePreview: String?
     var lastMessageFromMe: Bool?
     var unread: Bool
+    /// Kind of the latest message still in the conversation (unsent messages are skipped).
+    var lastMessageKind: ChatMessage.Kind? = nil
+
+    /// The inbox line: "You: hey", "Mina took a screenshot", …
+    var previewLine: String {
+        if lastMessageKind == .screenshot {
+            return lastMessageFromMe == true ? "You took a screenshot" : "\(other.firstName) took a screenshot"
+        }
+        guard let text = lastMessagePreview else { return "New match. Say hi!" }
+        return lastMessageFromMe == true ? "You: \(text)" : text
+    }
 }
 
+/// One person's emoji reaction to a message (at most one per person per message).
+nonisolated struct MessageReaction: Codable, Equatable, Hashable, Sendable {
+    var emoji: String
+    var fromMe: Bool
+}
+
+/// The quoted message shown above a reply. Its text is gone once the original is unsent.
+nonisolated struct ReplyPreview: Codable, Equatable, Hashable, Sendable {
+    var id: UUID
+    var body: String
+    var senderIsMe: Bool
+    var isDeleted: Bool = false
+}
+
+/// Text only: Crushly deliberately has no photo or attachment messages.
 nonisolated struct ChatMessage: Identifiable, Codable, Equatable, Hashable, Sendable {
+    enum Kind: String, Codable, Sendable {
+        case text
+        /// Content-free notice: the sender took a screenshot of the conversation.
+        case screenshot
+    }
+
     var id: UUID
     var senderIsMe: Bool
     var body: String
     var createdAt: Date
+    var kind: Kind = .text
+    /// Unsent by its sender: the text is gone for both people; only a placeholder remains.
+    var isDeleted = false
+    var replyTo: ReplyPreview? = nil
+    var reactions: [MessageReaction] = []
+
+    var isLiveText: Bool { kind == .text && !isDeleted }
+    var myReaction: String? { reactions.first(where: \.fromMe)?.emoji }
+
+    /// The reply preview other messages show when they quote this one.
+    var asReplyPreview: ReplyPreview { ReplyPreview(id: id, body: String(body.prefix(140)), senderIsMe: senderIsMe, isDeleted: isDeleted) }
+}
+
+nonisolated extension ChatMessage {
+    private enum CodingKeys: String, CodingKey { case id, senderIsMe, body, createdAt, kind, isDeleted, replyTo, reactions }
+
+    /// Tolerates caches written before replies, reactions and unsend existed.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(id: try c.decode(UUID.self, forKey: .id),
+                  senderIsMe: try c.decode(Bool.self, forKey: .senderIsMe),
+                  body: try c.decode(String.self, forKey: .body),
+                  createdAt: try c.decode(Date.self, forKey: .createdAt),
+                  kind: try c.decodeIfPresent(Kind.self, forKey: .kind) ?? .text,
+                  isDeleted: try c.decodeIfPresent(Bool.self, forKey: .isDeleted) ?? false,
+                  replyTo: try c.decodeIfPresent(ReplyPreview.self, forKey: .replyTo),
+                  reactions: try c.decodeIfPresent([MessageReaction].self, forKey: .reactions) ?? [])
+    }
 }
 
 /// Keyset cursor for `fetch_messages`: both parts or neither.

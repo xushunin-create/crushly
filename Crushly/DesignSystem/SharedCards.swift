@@ -1,13 +1,13 @@
 import SwiftUI
 
-/// Only shown when the photo review status is actually `approved`.
+/// Only shown for `approved` profiles: live photos, none removed by a moderator.
 struct VerificationBadge: View {
     let status: ReviewStatus
     var body: some View {
         if status == .approved {
             Image(systemName: "checkmark.seal.fill")
                 .foregroundStyle(Theme.Palette.mint)
-                .accessibilityLabel("Photos approved")
+                .accessibilityLabel("Photos checked")
         }
     }
 }

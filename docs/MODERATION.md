@@ -28,20 +28,25 @@ update reports
 
 **Suggested handling.** Treat `under_18` and `unsafe_behavior` as urgent (same day). Reject photos or delete the account where warranted. Escalate credible threats to USC Department of Public Safety or law enforcement following USC policy.
 
-## Photo review
+## Photos and removal
 
-New or changed photos are `pending`. Pending photos are visible but never show a verified badge. `rejected` photos are hidden from everyone else. Only the server or a moderator can change the status; clients can't.
+Photos go live as soon as they're saved; there is no review queue. Before upload, the app checks each photo on the
+phone for nudity/explicit content (`PhotoSafetyCheck`, a bundled Core ML model) and refuses explicit ones. That check
+runs on the device, so a tampered app could skip it: reports are the backstop.
+
+Status is derived when photos change: any photo listed in `photo_flags` → `rejected` (photos hidden from everyone
+else, can't match); otherwise at least one photo → `approved`; no photos → `pending`. Clients can't read or change
+`photo_flags` or the status, and a flagged photo can't be re-added (`photo_removed`).
+
+To take a photo down after a report:
 
 ```sql
--- Review queue
-select id, first_name, photo_paths, updated_at
-  from profiles where photo_review_status = 'pending' order by updated_at;
-
--- Decide
-update profiles set photo_review_status = 'approved' where id = '<user id>';   -- or 'rejected'
+update profiles set photo_review_status = 'rejected' where id = '<user id>';
+insert into photo_flags (path, user_id, reason) values ('<user id>/<file>.jpg', '<user id>', 'report <report id>');
 ```
 
-Look at the images in Storage → `profile-photos/<user id>/`.
+Look at the images in Storage → `profile-photos/<user id>/` (and delete the object if it's illegal content). The user
+has to replace the photo to match again.
 
 ## Removing a user
 

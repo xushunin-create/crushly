@@ -37,8 +37,26 @@ begin
   r := public.upsert_profile('{"first_name":"Al","photo_review_status":"approved","selfie_status":"verified","university_domain":"x.edu"}');
   perform tests.assert(r.first_name = 'Al' and r.photo_review_status = 'approved' and r.selfie_status = 'not_started'
                        and r.university_domain = 'usc.edu', 'upsert_profile ignores server-only fields');
+  -- Photos go live as soon as they're saved: no review queue.
   r := public.upsert_profile(jsonb_build_object('photo_paths', jsonb_build_array(a::text || '/new.jpg')));
-  perform tests.assert(r.photo_review_status = 'pending', 'changing photos resets review to pending');
+  perform tests.assert(r.photo_review_status = 'approved', 'a new photo is live and approved immediately');
+  r := public.upsert_profile('{"photo_paths":[]}');
+  perform tests.assert(r.photo_review_status = 'pending', 'no photos means nothing to show');
+  -- A moderator removal sticks until the photos change, and the removed photo can't come back.
+  r := public.upsert_profile(jsonb_build_object('photo_paths', jsonb_build_array(a::text || '/new.jpg')));
+  perform tests.logout();
+  insert into public.photo_flags (path, user_id, reason) values (a::text || '/new.jpg', a, 'report');
+  update public.profiles set photo_review_status = 'rejected' where id = a;
+  perform tests.login(a);
+  perform tests.expect_sqlstate('select * from public.photo_flags', '42501', 'clients cannot read moderator flags');
+  perform tests.expect_sqlstate(format($q$delete from public.photo_flags where user_id = %L$q$, a), '42501', 'clients cannot clear moderator flags');
+  r := public.upsert_profile('{"first_name":"Al"}');
+  perform tests.assert(r.photo_review_status = 'rejected', 'editing other fields keeps a moderator rejection');
+  r := public.upsert_profile('{"photo_paths":[]}');
+  perform tests.expect_error(format($q$select public.upsert_profile('{"photo_paths":["%s/new.jpg"]}')$q$, a),
+                             'photo_removed', 'a photo a moderator removed cannot be re-added');
+  r := public.upsert_profile(jsonb_build_object('photo_paths', jsonb_build_array(a::text || '/other.jpg')));
+  perform tests.assert(r.photo_review_status = 'approved', 'replacing the removed photo makes the profile live again');
   perform tests.expect_error(format($q$select public.upsert_profile('{"photo_paths":["%s/x.jpg"]}')$q$, b),
                              'invalid_input', 'cannot reference photos in another user folder');
   perform tests.expect_error($q$select public.upsert_profile('{"interests":["a","b"]}')$q$, 'invalid_input', 'interests must be exactly 3');
@@ -53,9 +71,9 @@ begin
   perform tests.logout();
   grant update (photo_review_status, selfie_status) on public.profiles to authenticated;
   perform tests.login(a);
-  update public.profiles set photo_review_status = 'approved', selfie_status = 'verified' where id = a;
+  update public.profiles set photo_review_status = 'rejected', selfie_status = 'verified' where id = a;
   perform tests.logout();
-  perform tests.assert((select photo_review_status = 'pending' and selfie_status = 'not_started' from public.profiles where id = a),
+  perform tests.assert((select photo_review_status = 'approved' and selfie_status = 'not_started' from public.profiles where id = a),
                        'profiles_guard trigger keeps server-only columns on client update');
   revoke update (photo_review_status, selfie_status) on public.profiles from authenticated;
   perform tests.login(a);

@@ -102,9 +102,12 @@ intention, availability, photo_paths, photo_review_status`. It never contains a 
 ### Conversations
 | RPC | Returns | Rules / errors |
 |---|---|---|
-| `my_conversations()` | rows `{match_id, created_at, other public_profile, last_message_at, last_message_preview, last_message_from_me, unread}` | Source of truth on launch and reconnect: purge any cached conversation not listed |
-| `fetch_messages(p_match_id, p_before_created_at, p_before_id, p_limit ≤ 50)` | rows `{id, sender_is_me, body, created_at}`, newest first | Keyset pagination: pass both cursor parts or neither. `not_found` for non-participants or deleted matches |
-| `send_message(p_match_id, p_client_message_id, p_body)` | `{id, created_at}` | Retry-safe: same id returns the existing row. A reused id from another sender or match gets `invalid_input`. `not_found` once the match is gone, so a queued send can't recreate it. `rate_limited` |
+| `my_conversations()` | rows `{match_id, created_at, other public_profile, last_message_at, last_message_preview, last_message_from_me, unread, last_message_kind}` | Source of truth on launch and reconnect: purge any cached conversation not listed. The preview skips unsent messages; it is null for a `screenshot` notice |
+| `fetch_messages(p_match_id, p_before_created_at, p_before_id, p_limit ≤ 50)` | rows `{id, sender_is_me, body, created_at, kind, deleted, reply_to_id, reply_body, reply_sender_is_me, reply_deleted, reactions}`, newest first | Keyset pagination: pass both cursor parts or neither. `not_found` for non-participants or deleted matches. `kind` is `text` or `screenshot`; unsent messages have `deleted = true` and an empty body. `reactions` is `[{emoji, mine}]` |
+| `send_message(p_match_id, p_client_message_id, p_body, p_reply_to_id default null)` | `{id, created_at}` | Retry-safe: same id returns the existing row. A reused id from another sender or match gets `invalid_input`. `not_found` once the match is gone, so a queued send can't recreate it. A reply must quote a live text message in the same conversation (`invalid_input` otherwise). `rate_limited` |
+| `react_to_message(p_message_id, p_emoji default null)` | void | One reaction per person per message; a new emoji replaces the old one, null removes it. Emoji only (no letters, digits or spaces, ≤ 16 code points). Not on unsent messages or notices |
+| `unsend_message(p_message_id)` | void | Sender only (`not_found` for anyone else). Erases the text and its reactions for both people, leaving a placeholder. Idempotent. Text messages only |
+| `record_screenshot(p_match_id)` | `{id, created_at}` | Content-free `screenshot` notice from the caller. Repeats within 10 s return the same row. No push |
 | `mark_conversation_read(p_match_id)` | void | |
 | `leave_conversation(p_match_id)` | void | Ends the match and deletes all messages for both. `not_found` if already gone |
 
@@ -126,7 +129,7 @@ Relevance is re-checked at send time: the match must still exist, there must be 
 Each user may join one **private** Broadcast channel, `user:<auth uid, lowercase>`, receive-only (RLS on
 `realtime.messages`: `extension = 'broadcast'` and `realtime.topic() = 'user:' || auth.uid()`; no insert policy).
 Triggers send event `poke` with payload exactly `{type: 'message' | 'match' | 'conversation_removed', match_id}`:
-`message` on every new message (both participants), `match` on a new match, `conversation_removed` whenever a match
+`message` on every new message, unsend and reaction change (both participants), `match` on a new match, `conversation_removed` whenever a match
 row is deleted (leave, block, report, account deletion). Clients refetch through `my_conversations` / `fetch_messages`.
 
 Realtime caches channel authorization for the life of a connection (a revoked subscriber keeps receiving until its

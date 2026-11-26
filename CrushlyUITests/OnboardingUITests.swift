@@ -1,6 +1,6 @@
 import XCTest
 
-/// Drives the real app (demo fixture) through sign-in → terms → profile + matching preferences → Spaces.
+/// Drives the real app (demo fixture) through sign-in → terms → the four profile steps → Spaces.
 final class OnboardingUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
@@ -46,13 +46,29 @@ final class OnboardingUITests: XCTestCase {
         }
         continueButton.tap()
 
-        // Profile.
+        // Profile, one step at a time. Step 1: basics, with gender asked exactly once.
         let firstName = app.textFields["profile.firstName"]
         XCTAssertTrue(firstName.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.text(containing: "Step 1 of 4").exists)
         firstName.tap()
         firstName.typeText("Avery")
         app.buttons["keyboard.done"].tap()
+        app.buttons["profile.next"].reveal(in: app).tap()
+        XCTAssertTrue(app.staticTexts["Still needed"].waitForExistence(timeout: 5), "gender is required before continuing")
+        XCTAssertEqual(app.buttons.matching(identifier: "prefs.matchAs.woman").count, 1, "only one place to pick your gender")
+        app.buttons["prefs.matchAs.woman"].reveal(in: app).tap()
+        app.attach(self, "profile-step-basics")
+        app.buttons["profile.next"].reveal(in: app).tap()
+
+        // Step 2: photos.
+        XCTAssertTrue(app.text(containing: "Step 2 of 4").waitForExistence(timeout: 5))
+        XCTAssertTrue(app.text(containing: "go live").exists, "photos are live right away, no review wait")
         app.buttons["profile.samplePhoto"].reveal(in: app).tap()
+        XCTAssertTrue(app.text(containing: "Live").waitForExistence(timeout: 5))
+        app.buttons["profile.next"].reveal(in: app).tap()
+
+        // Step 3: interests and a prompt.
+        XCTAssertTrue(app.text(containing: "Step 3 of 4").waitForExistence(timeout: 5))
         for interest in ["Coffee", "Design", "Film"] {
             app.buttons[interest].reveal(in: app).tap()
         }
@@ -60,14 +76,15 @@ final class OnboardingUITests: XCTestCase {
         answer.reveal(in: app).tap()
         answer.typeText("Tacos after midnight.")
         app.buttons["keyboard.done"].tap()
+        app.buttons["profile.next"].reveal(in: app).tap()
 
-        // Matching preferences are required before saving.
+        // Step 4: who you'd like to meet.
+        XCTAssertTrue(app.text(containing: "Step 4 of 4").waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["prefs.matchAs.woman"].exists, "gender is not asked a second time")
         app.buttons["profile.save"].reveal(in: app).tap()
-        XCTAssertTrue(app.staticTexts["Still needed"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.text(containing: "Show me").exists)
-        app.buttons["prefs.matchAs.woman"].reveal(in: app).tap()
+        XCTAssertTrue(app.text(containing: "Show me").waitForExistence(timeout: 5))
         app.buttons["prefs.showMe.everyone"].reveal(in: app).tap()
-        app.attach(self, "profile-filled")
+        app.attach(self, "profile-step-looking-for")
         app.buttons["profile.save"].reveal(in: app).tap()
 
         // Spaces: invisible by default, location not used yet.

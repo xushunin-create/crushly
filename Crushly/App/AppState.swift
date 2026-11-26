@@ -151,6 +151,11 @@ final class AppState {
     @ObservationIgnored private(set) var openThreadID: UUID?
     @ObservationIgnored let messageCache: MessageCache
     @ObservationIgnored private var pokeTask: Task<Void, Never>?
+    /// Optimistic reactions/unsends: a fetch that started before such a write settled could carry the old state, so
+    /// merges keep the local copy of those messages until a fetch that started afterwards confirms them.
+    @ObservationIgnored private var localEditEpoch = 0
+    @ObservationIgnored private var inFlightEdits: [UUID: Int] = [:]
+    @ObservationIgnored private var settledEdits: [UUID: Int] = [:]
 
     // MARK: UI coordination
 
@@ -894,10 +899,11 @@ final class AppState {
     /// Newest page; merges by id so repeated fetches never duplicate.
     func fetchLatest(_ matchID: UUID) async {
         threads[matchID, default: ThreadState()].loading = true
+        let epoch = localEditEpoch
         do {
             let page = try await backend.fetchMessages(matchID: matchID, before: nil, limit: Self.messagePageSize)
             guard threads[matchID] != nil else { return }
-            merge(page, into: matchID)
+            merge(page, into: matchID, fetchedAtEpoch: epoch)
             if page.count < Self.messagePageSize { threads[matchID]?.hasMore = false }
             threads[matchID]?.error = nil
         } catch CrushlyError.notFound {
@@ -912,10 +918,11 @@ final class AppState {
     func loadOlder(_ matchID: UUID) async {
         guard let state = threads[matchID], state.hasMore, !state.loading, let oldest = state.messages.first else { return }
         threads[matchID]?.loading = true
+        let epoch = localEditEpoch
         do {
             let page = try await backend.fetchMessages(matchID: matchID, before: MessageCursor(createdAt: oldest.createdAt, id: oldest.id),
                                                        limit: Self.messagePageSize)
-            merge(page, into: matchID)
+            merge(page, into: matchID, fetchedAtEpoch: epoch)
             if page.count < Self.messagePageSize { threads[matchID]?.hasMore = false }
         } catch CrushlyError.notFound {
             conversationEnded(matchID)
@@ -925,10 +932,17 @@ final class AppState {
         threads[matchID]?.loading = false
     }
 
-    private func merge(_ page: [ChatMessage], into matchID: UUID) {
+    private func merge(_ page: [ChatMessage], into matchID: UUID, fetchedAtEpoch: Int? = nil) {
         guard var state = threads[matchID] else { return }
+        let epoch = fetchedAtEpoch ?? localEditEpoch
         var byID = Dictionary(state.messages.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-        for message in page { byID[message.id] = message }
+        for message in page {
+            if byID[message.id] != nil, inFlightEdits[message.id] != nil || (settledEdits[message.id] ?? Int.min) > epoch {
+                continue   // possibly older than my own pending reaction/unsend; keep the local copy
+            }
+            settledEdits[message.id] = nil
+            byID[message.id] = message
+        }
         state.messages = byID.values.sorted { ($0.createdAt, $0.id.uuidString) < ($1.createdAt, $1.id.uuidString) }
         let confirmed = Set(byID.keys)
         state.pending.removeAll { confirmed.contains($0.id) }
@@ -941,14 +955,15 @@ final class AppState {
         messageCache.save(CachedThread(messages: state.messages, pending: state.pending), user: user, match: matchID)
     }
 
-    func sendMessage(_ body: String, in matchID: UUID) async {
+    func sendMessage(_ body: String, in matchID: UUID, replyingTo original: ChatMessage? = nil) async {
         let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         guard trimmed.count <= rules.messageMaxChars else {
             errorMessage = "Messages can be up to \(rules.messageMaxChars) characters."
             return
         }
-        let pending = PendingMessage(id: UUID(), body: trimmed, createdAt: Date(), state: .sending)
+        let quote = original.flatMap { $0.isLiveText ? $0.asReplyPreview : nil }
+        let pending = PendingMessage(id: UUID(), body: trimmed, createdAt: Date(), state: .sending, replyTo: quote)
         threads[matchID, default: ThreadState()].pending.append(pending)
         persist(matchID)
         await deliver(pending.id, in: matchID)
@@ -969,14 +984,17 @@ final class AppState {
     private func deliver(_ pendingID: UUID, in matchID: UUID) async {
         guard let pending = threads[matchID]?.pending.first(where: { $0.id == pendingID }) else { return }
         do {
-            let receipt = try await backend.sendMessage(matchID: matchID, clientMessageID: pending.id, body: pending.body)
+            let receipt = try await backend.sendMessage(matchID: matchID, clientMessageID: pending.id, body: pending.body,
+                                                        replyToID: pending.replyTo?.id)
             guard threads[matchID] != nil else { return }
             threads[matchID]?.pending.removeAll { $0.id == pendingID }
-            merge([ChatMessage(id: receipt.id, senderIsMe: true, body: pending.body, createdAt: receipt.createdAt)], into: matchID)
+            merge([ChatMessage(id: receipt.id, senderIsMe: true, body: pending.body, createdAt: receipt.createdAt,
+                               replyTo: pending.replyTo)], into: matchID)
             if let index = conversations.firstIndex(where: { $0.id == matchID }) {
                 conversations[index].lastMessageAt = receipt.createdAt
                 conversations[index].lastMessagePreview = String(pending.body.prefix(80))
                 conversations[index].lastMessageFromMe = true
+                conversations[index].lastMessageKind = .text
             }
         } catch CrushlyError.notFound {
             // The match is gone (left, blocked, deleted). A queued send must never recreate anything.
@@ -988,6 +1006,85 @@ final class AppState {
             }
             if case CrushlyError.rateLimited = error { handle(error) }
         }
+    }
+
+    /// Tapback-style: picking the emoji you already used removes it; picking another replaces it. Optimistic.
+    func toggleReaction(_ emoji: String, on messageID: UUID, in matchID: UUID) async {
+        guard let index = threads[matchID]?.messages.firstIndex(where: { $0.id == messageID }),
+              let message = threads[matchID]?.messages[index], message.isLiveText else { return }
+        let newEmoji: String? = message.myReaction == emoji ? nil : emoji
+        var updated = message
+        updated.reactions.removeAll(where: \.fromMe)
+        if let newEmoji { updated.reactions.append(MessageReaction(emoji: newEmoji, fromMe: true)) }
+        threads[matchID]?.messages[index] = updated
+        persist(matchID)
+        beginLocalEdit(messageID)
+        defer { endLocalEdit(messageID) }
+        do {
+            try await backend.react(messageID: messageID, emoji: newEmoji)
+        } catch CrushlyError.notFound {
+            conversationEnded(matchID)
+        } catch {
+            restore(message, in: matchID)
+            handle(error)
+        }
+    }
+
+    /// Unsends one of my messages for both people. Optimistic; quotes of it lose their text too.
+    func unsend(_ messageID: UUID, in matchID: UUID) async {
+        guard let thread = threads[matchID],
+              let original = thread.messages.first(where: { $0.id == messageID }), original.senderIsMe, original.isLiveText else { return }
+        let before = thread.messages
+        threads[matchID]?.messages = before.map { message in
+            var m = message
+            if m.id == messageID { m.isDeleted = true; m.body = ""; m.reactions = [] }
+            if m.replyTo?.id == messageID { m.replyTo?.isDeleted = true; m.replyTo?.body = "" }
+            return m
+        }
+        persist(matchID)
+        beginLocalEdit(messageID)
+        defer { endLocalEdit(messageID) }
+        do {
+            try await backend.unsendMessage(messageID: messageID)
+            await refreshConversations()
+        } catch CrushlyError.notFound {
+            // Either the conversation ended or the message is already gone; the next fetch settles which.
+            await fetchLatest(matchID)
+        } catch {
+            threads[matchID]?.messages = before
+            persist(matchID)
+            handle(error)
+        }
+    }
+
+    /// The person took a screenshot while this conversation was on screen: the other person gets a notice.
+    func recordScreenshot(in matchID: UUID) async {
+        guard threads[matchID] != nil, conversation(with: matchID) != nil else { return }
+        do {
+            let receipt = try await backend.recordScreenshot(matchID: matchID)
+            merge([ChatMessage(id: receipt.id, senderIsMe: true, body: "", createdAt: receipt.createdAt, kind: .screenshot)],
+                  into: matchID)
+        } catch CrushlyError.notFound {
+            conversationEnded(matchID)
+        } catch {
+            // Best effort; a missed notice is retried on the next screenshot.
+        }
+    }
+
+    private func beginLocalEdit(_ messageID: UUID) {
+        inFlightEdits[messageID, default: 0] += 1
+    }
+
+    private func endLocalEdit(_ messageID: UUID) {
+        localEditEpoch += 1
+        settledEdits[messageID] = localEditEpoch
+        if let count = inFlightEdits[messageID], count > 1 { inFlightEdits[messageID] = count - 1 } else { inFlightEdits[messageID] = nil }
+    }
+
+    private func restore(_ message: ChatMessage, in matchID: UUID) {
+        guard let index = threads[matchID]?.messages.firstIndex(where: { $0.id == message.id }) else { return }
+        threads[matchID]?.messages[index] = message
+        persist(matchID)
     }
 
     func markRead(_ matchID: UUID) async {
@@ -1162,6 +1259,22 @@ final class AppState {
             await backend.track(.profileUpdated)
         }
         await reloadAccount()
+    }
+
+    /// Runs before every photo upload. Replaceable in tests; production uses the on-device model.
+    @ObservationIgnored var photoSafetyCheck: @Sendable (Data) async throws -> PhotoSafetyCheck.Verdict = PhotoSafetyCheck.evaluate
+
+    /// Checks a photo on the device for nudity/explicit content, then uploads it. Explicit photos are refused before
+    /// anything is sent; a photo that can't be analysed is refused too (fail closed).
+    func uploadPhoto(_ jpeg: Data) async throws -> String {
+        let verdict: PhotoSafetyCheck.Verdict
+        do {
+            verdict = try await photoSafetyCheck(jpeg)
+        } catch {
+            throw CrushlyError.photoCheckUnavailable
+        }
+        guard verdict == .allowed else { throw CrushlyError.photoRejected }
+        return try await backend.uploadPhoto(jpeg)
     }
 
     func saveVerifiedOnly(_ enabled: Bool) async throws {

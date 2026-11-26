@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import Testing
 @testable import Crushly
 
@@ -62,7 +63,7 @@ struct OnboardingTests {
         #expect(state.phase == .ready)
         #expect(state.preferences == prefs)
         #expect(state.profile?.firstName == "Avery")
-        #expect(state.profile?.photoReviewStatus == .pending)
+        #expect(state.profile?.photoReviewStatus == .approved, "screened photos are live right away, no review wait")
 
         // Sign out and back in: the same saved account state comes back.
         await state.signOut()
@@ -98,24 +99,54 @@ struct OnboardingTests {
     @Test func clientCannotGrantItselfServerOnlyStatus() async throws {
         let state = makeState(seeded: true)
         await state.bootstrap()
+        await state.demoSimulateReview(.rejected)
         var profile = try #require(state.profile)
         profile.photoReviewStatus = .approved
         profile.selfieStatus = .verified
         try await state.saveProfile(profile)
-        #expect(state.profile?.photoReviewStatus == .pending)
+        #expect(state.profile?.photoReviewStatus == .rejected, "a moderator's decision can't be overridden by the client")
         #expect(state.profile?.selfieStatus == .notStarted)
     }
 
-    @Test func changingPhotosSendsThemBackToReview() async throws {
+    @Test func newPhotosGoLiveImmediately() async throws {
         let state = makeState(seeded: true)
         await state.bootstrap()
-        await state.demoSimulateReview(.approved)
-        #expect(state.profile?.photoReviewStatus == .approved)
+        await state.demoSimulateReview(.rejected)
 
         var profile = try #require(state.profile)
-        profile.photoPaths.append(try await state.backend.uploadPhoto(Data([1, 2, 3])))
+        profile.photoPaths = [try await state.backend.uploadPhoto(Data([1, 2, 3]))]
         try await state.saveProfile(profile)
-        #expect(state.profile?.photoReviewStatus == .pending)
+        #expect(state.profile?.photoReviewStatus == .approved, "replacing a removed photo with a screened one is live at once")
+    }
+
+    @Test func explicitPhotosAreRefusedBeforeUpload() async throws {
+        let state = makeState(seeded: true)
+        await state.bootstrap()
+        state.photoSafetyCheck = { _ in .explicit }
+        await #expect(throws: CrushlyError.photoRejected) { _ = try await state.uploadPhoto(Data([1, 2, 3])) }
+        state.photoSafetyCheck = { _ in throw CrushlyError.unknown("model") }
+        await #expect(throws: CrushlyError.photoCheckUnavailable, "a photo that can't be checked is refused") {
+            _ = try await state.uploadPhoto(Data([1, 2, 3]))
+        }
+        state.photoSafetyCheck = { _ in .allowed }
+        _ = try await state.uploadPhoto(Data([4, 5, 6]))
+    }
+
+    @Test func onDeviceModelLoadsAndAllowsAnOrdinaryImage() async throws {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 400, height: 400)).image { context in
+            UIColor.systemTeal.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 400, height: 400))
+            UIColor.white.setFill()
+            context.cgContext.fillEllipse(in: CGRect(x: 100, y: 100, width: 200, height: 200))
+        }
+        let data = try #require(image.jpegData(compressionQuality: 0.9))
+        #expect(PhotoSafetyCheck.isModelAvailable, "the model is bundled and loads")
+        #if !targetEnvironment(simulator)
+        // The model can only run on a device (Vision's feature print has no Simulator inference context).
+        let score = try PhotoSafetyCheck.score(data)
+        #expect((0...1).contains(score))
+        #endif
+        #expect(try await PhotoSafetyCheck.evaluate(data) == .allowed)
     }
 
     @Test func deletingAccountRemovesData() async throws {

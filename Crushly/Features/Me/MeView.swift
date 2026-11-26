@@ -27,7 +27,7 @@ struct MeView: View {
                 Toggle(isOn: $verifiedOnly) {
                     VStack(alignment: .leading) {
                         Text("Verified profiles only")
-                        Text("Only see — and be seen by — people whose photos are approved.")
+                        Text("Only see — and be seen by — people with a live profile photo.")
                             .font(Theme.Typeface.footnote).foregroundStyle(Theme.Palette.inkSoft)
                     }
                 }
@@ -256,8 +256,8 @@ struct DemoControlsSection: View {
             }
             Button("Skip ahead 2 minutes (lets the lease lapse)") { Task { await state.demoSkipAhead(minutes: 2) } }
             Button("Skip ahead 1 hour") { Task { await state.demoSkipAhead(minutes: 60) } }
-            Button("Simulate photo approval") { Task { await state.demoSimulateReview(.approved) } }
-            Button("Simulate photo rejection") { Task { await state.demoSimulateReview(.rejected) } }
+            Button("Simulate a moderator removing my photo") { Task { await state.demoSimulateReview(.rejected) } }
+            Button("Flag my next photo upload as explicit") { state.demo?.simulateFlaggedPhotos = 1 }
             DisclosureGroup("Scenario cast") {
                 ForEach(state.demo?.scenarioNotes ?? [], id: \.name) { item in
                     VStack(alignment: .leading, spacing: 2) {

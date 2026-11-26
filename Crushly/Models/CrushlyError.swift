@@ -23,7 +23,10 @@ nonisolated enum CrushlyError: Error, Equatable, LocalizedError, Sendable {
     case limitReached
     case invalidDuration
     case domainNotAllowed
+    case photoRemoved
     // Client-side only.
+    case photoRejected
+    case photoCheckUnavailable
     case locationNotVerified
     case invalidVerificationCode
     case accountNotFound
@@ -54,6 +57,7 @@ nonisolated enum CrushlyError: Error, Equatable, LocalizedError, Sendable {
         case "limit_reached": self = .limitReached
         case "invalid_duration": self = .invalidDuration
         case "domain_not_allowed": self = .domainNotAllowed
+        case "photo_removed": self = .photoRemoved
         default: self = .unknown(serverCode)
         }
     }
@@ -81,6 +85,9 @@ nonisolated enum CrushlyError: Error, Equatable, LocalizedError, Sendable {
         case .limitReached: "You've used all your interests for this visit."
         case .invalidDuration: "That pause length isn't available."
         case .domainNotAllowed: "Crushly is only open to USC email addresses right now."
+        case .photoRemoved: "A moderator removed that photo, so it can't be used again."
+        case .photoRejected: "That photo can't be used. Nudity and explicit images aren't allowed on Crushly."
+        case .photoCheckUnavailable: "That photo couldn't be checked. Please try a different one."
         case .invalidVerificationCode: "That code is incorrect or expired."
         case .accountNotFound: "There's no Crushly account for that email yet. Choose Create account to make one."
         case .network: "You appear to be offline. We'll retry when you're back."

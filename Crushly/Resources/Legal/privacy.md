@@ -16,13 +16,13 @@ This policy explains what Crushly collects, how it's used, who can see it, and h
 
 **Account.** Your @usc.edu email address, used to sign you in with a one-time code and to confirm you're a USC student. Your declaration that you're 18 or older, and which versions of these documents you accepted.
 
-**Profile.** What you choose to add: first name, age, pronouns, gender, interests, vibe tags, a prompt answer, what you're looking for, your availability, and photos. Your matching preferences ("Show me" and an age range). Whether your photos have been approved by a moderator.
+**Profile.** What you choose to add: first name, age, pronouns, gender, interests, vibe tags, a prompt answer, what you're looking for, your availability, and photos. Your matching preferences ("Show me" and an age range). Whether a moderator has removed any of your photos.
 
 **Campus space participation.** Only while you've chosen "Open to matching" in a space: the space's identifier, its boundary version, when your session started, and when its lease expires. Your phone also sends the age and reported accuracy of its most recent location fix, so the server can reject stale or implausible claims. It **does not** send coordinates. The session is deleted automatically within about a minute of the lease ending, and right away when you leave the space, go invisible, pause, sign out or delete your account.
 
 **Interests and matches.** Who you expressed interest in during a visit (deleted when either of you leaves the space), which profiles were shown to you during a visit, and your matches.
 
-**Messages.** The messages you send and receive in a match, stored on our servers so both of you can load them. A copy is cached on your device for faster loading.
+**Messages.** The messages you send and receive in a match, including replies and emoji reactions, stored on our servers so both of you can load them. A copy is cached on your device for faster loading. If you unsend a message, its text is deleted for both of you, but the other person may already have seen it. If you take a screenshot of a conversation, the other person is told (we can't detect photos taken with another device).
 
 **Safety.** People you block. Reports you file or that are filed about you, including a snapshot of the reported profile and, when the reporter includes them, copies of up to 50 messages from the conversation ("report evidence").
 
@@ -50,7 +50,7 @@ Phones report their own location, so someone using spoofing tools could falsely 
 
 **Us.** Our authorized moderators can access account, profile, report and message data to operate Crushly, review photos and reports, and keep people safe. Access is limited to named people.
 
-**Service providers.** Crushly is hosted on Supabase (database, authentication, file storage and server functions). Push notifications are delivered through Apple Push Notification service, and notification text never includes message content or locations. Sign-in codes are sent by email through Resend. These providers process data only to provide their services to us.
+**Service providers.** Crushly is hosted on Supabase (database, authentication, file storage and server functions). Push notifications are delivered through Apple Push Notification service, and notification text never includes message content or locations. Sign-in codes are sent by email through Resend. Before a profile photo is uploaded, the app checks it on your phone for nudity and explicit content; that check doesn't send the photo anywhere. These providers process data only to provide their services to us.
 
 **Legal and safety.** We may disclose information if required by law, or if we believe in good faith it's necessary to prevent harm, including reporting credible threats to USC Department of Public Safety or law enforcement.
 

@@ -15,11 +15,49 @@ final class ConnectionsUITests: XCTestCase {
         let mina = app.buttons["candidate.Mina"]
         XCTAssertTrue(mina.waitForExistence(timeout: 8))
         mina.reveal(in: app).tap()
-        app.buttons["interest.send"].tap()
+        app.holdToSendInterest()
         XCTAssertTrue(app.buttons["reveal.message"].waitForExistence(timeout: 8))
         app.buttons["reveal.message"].tap()
         XCTAssertTrue(app.buttons["chat.options"].waitForExistence(timeout: 8))
         return app
+    }
+
+    @MainActor
+    func testReactReplyAndUnsend() throws {
+        let app = matchedChat()
+        let composer = app.textViews["chat.composer"].exists ? app.textViews["chat.composer"] : app.textFields["chat.composer"]
+        composer.tap()
+        composer.typeText("See you at Leavey?")
+        app.buttons["chat.send"].tap()
+        let sent = app.text(containing: "See you at Leavey?")
+        XCTAssertTrue(sent.waitForExistence(timeout: 5))
+
+        // Long-press: reaction bar + actions. React with a heart.
+        sent.press(forDuration: 0.6)
+        XCTAssertTrue(app.buttons["chat.react.❤️"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["chat.action.unsend"].exists, "my own messages can be unsent")
+        app.attach(self, "chat-long-press")
+        app.buttons["chat.react.❤️"].tap()
+        XCTAssertTrue(app.text(containing: "You reacted ❤️").waitForExistence(timeout: 5))
+
+        // Reply to it.
+        app.text(containing: "See you at Leavey?").press(forDuration: 0.6)
+        app.buttons["chat.action.reply"].tap()
+        XCTAssertTrue(app.text(containing: "Replying to yourself").waitForExistence(timeout: 5))
+        composer.typeText("3rd floor")
+        app.buttons["chat.send"].tap()
+        XCTAssertTrue(app.text(containing: "You: 3rd floor").waitForExistence(timeout: 5))
+        XCTAssertTrue(app.text(containing: "Reply to you").exists, "the reply quotes the original")
+        app.attach(self, "chat-reply")
+
+        // Unsend the reply.
+        app.text(containing: "You: 3rd floor").press(forDuration: 0.6)
+        app.buttons["chat.action.unsend"].tap()
+        app.buttons.matching(identifier: "chat.confirmUnsend").firstMatch.tap()
+        XCTAssertTrue(app.element("chat.unsentNotice").waitForExistence(timeout: 5))
+        XCTAssertFalse(app.text(containing: "You: 3rd floor").exists)
+        XCTAssertFalse(app.buttons["chat.attach"].exists, "there is no way to send photos")
+        app.attach(self, "chat-unsent")
     }
 
     @MainActor
