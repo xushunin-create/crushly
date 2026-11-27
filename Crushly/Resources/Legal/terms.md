@@ -1,8 +1,8 @@
 # Crushly Terms of Service
 
-Effective [[EFFECTIVE DATE]]
+Effective November 16, 2026
 
-These terms are an agreement between you and [[OPERATOR LEGAL NAME]] ("we", "us") about your use of Crushly. By creating an account you agree to them and to the Privacy Policy. If you don't agree, don't use Crushly.
+These terms are an agreement between you and Preston Thoman ("we", "us") about your use of Crushly. By creating an account you agree to them and to the Privacy Policy. If you don't agree, don't use Crushly.
 
 Crushly is an independent app and is not affiliated with, endorsed by or sponsored by the University of Southern California.
 
@@ -74,7 +74,7 @@ You agree to defend and indemnify us against claims arising from your content, y
 
 ## Governing law and disputes
 
-These terms are governed by the laws of [[STATE]], without regard to conflict-of-law rules. Disputes will be resolved in the state or federal courts located in [[COUNTY, STATE]], and you and we consent to their jurisdiction. [[LAWYER: decide whether to add an arbitration clause and class-action waiver.]]
+These terms are governed by the laws of California, without regard to conflict-of-law rules. Disputes will be resolved in the state or federal courts located in Los Angeles County, California, and you and we consent to their jurisdiction.
 
 ## Apple
 
@@ -82,6 +82,5 @@ These terms are between you and us, not Apple. Apple isn't responsible for Crush
 
 ## Contact
 
-[[OPERATOR LEGAL NAME]]
-[[POSTAL ADDRESS]]
-[[CONTACT EMAIL]]
+Preston Thoman
+support@crushly.love

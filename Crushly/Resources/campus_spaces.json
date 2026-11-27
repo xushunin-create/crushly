@@ -169,7 +169,7 @@
    ]
   },
   "boundary_version": 1,
-  "validation_status": "draft",
+  "validation_status": "field_validated",
   "enabled": true,
   "sort_order": 10,
   "source_refs": [
@@ -270,7 +270,7 @@
    ]
   },
   "boundary_version": 1,
-  "validation_status": "draft",
+  "validation_status": "field_validated",
   "enabled": true,
   "sort_order": 20,
   "source_refs": [
@@ -395,7 +395,7 @@
    ]
   },
   "boundary_version": 1,
-  "validation_status": "draft",
+  "validation_status": "field_validated",
   "enabled": true,
   "sort_order": 30,
   "source_refs": [
@@ -460,7 +460,7 @@
    ]
   },
   "boundary_version": 1,
-  "validation_status": "draft",
+  "validation_status": "field_validated",
   "enabled": true,
   "sort_order": 40,
   "membership_rule": "point",

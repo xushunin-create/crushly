@@ -1,8 +1,8 @@
 # Crushly Privacy Policy
 
-Effective [[EFFECTIVE DATE]]
+Effective November 16, 2026
 
-This policy explains what Crushly collects, how it's used, who can see it, and how long it's kept. Crushly is operated by [[OPERATOR LEGAL NAME]] ("we", "us"). Crushly is an independent app and is not affiliated with or endorsed by the University of Southern California.
+This policy explains what Crushly collects, how it's used, who can see it, and how long it's kept. Crushly is operated by Preston Thoman ("we", "us"). Crushly is an independent app and is not affiliated with or endorsed by the University of Southern California.
 
 ## The short version
 
@@ -10,7 +10,7 @@ This policy explains what Crushly collects, how it's used, who can see it, and h
 - When you choose "Open to matching", our server learns only **which campus space** you chose, on a 60-second lease that your phone renews while you're there.
 - Messages are encrypted in transit and at rest but are **not end-to-end encrypted**. We can technically read them.
 - People matching in the same space can infer you were there at the same time.
-- Deleting your account deletes your data, except a small amount kept for safety (explained below). Deleted data can remain in backups for up to [[BACKUP RETENTION DAYS]] days.
+- Deleting your account deletes your data, except a small amount kept for safety (explained below). Deleted data can remain in backups for up to 14 days.
 
 ## What we collect
 
@@ -65,10 +65,10 @@ We don't sell your personal information or share it for advertising.
 | Account, profile, photos, preferences | You delete your account |
 | Messages | You or your match chooses Leave & delete, either of you blocks the other, or either account is deleted |
 | Report evidence (message copies) | 90 days after the report |
-| Reports | [[REPORT RETENTION, e.g. 2 years after the report is closed]] |
-| Usage events | [[ANALYTICS RETENTION]] |
+| Reports | 2 years after the report is closed |
+| Usage events | 12 months |
 | Deletion records (used to re-apply deletions after a backup restore) | 14 days |
-| Backups | Up to [[BACKUP RETENTION DAYS]] days |
+| Backups | Up to 14 days |
 
 ## Deleting your account
 
@@ -82,7 +82,7 @@ Leave & delete removes a conversation for both people. It can't remove screensho
 
 You can edit your profile, pause matching, go invisible, turn off campus matching, change notification settings, block or report people, and delete your account in the app. You can also turn off location access in iOS Settings at any time.
 
-Depending on where you live (for example, California), you may have the right to know what personal information we hold about you, to get a copy, to correct it, and to have it deleted. Contact us at [[CONTACT EMAIL]] to make a request. We won't discriminate against you for exercising these rights.
+Depending on where you live (for example, California), you may have the right to know what personal information we hold about you, to get a copy, to correct it, and to have it deleted. Contact us at support@crushly.love to make a request. We won't discriminate against you for exercising these rights.
 
 ## Age
 
@@ -98,6 +98,5 @@ If we make material changes, we'll update the version and ask you to review and 
 
 ## Contact
 
-[[OPERATOR LEGAL NAME]]
-[[POSTAL ADDRESS]]
-[[CONTACT EMAIL]]
+Preston Thoman
+support@crushly.love

@@ -76,8 +76,8 @@ nonisolated enum ConversationStarters {
 
 nonisolated enum LegalDocuments {
     /// Bump whenever terms.md / privacy.md change in substance; users must re-accept.
-    static let termsVersion = "2026-11-16-draft"
-    static let privacyVersion = "2026-11-16-draft"
+    static let termsVersion = "2026-11-16"
+    static let privacyVersion = "2026-11-16"
 
     enum Kind: String, Identifiable, Sendable {
         case terms = "Terms of Service", privacy = "Privacy Policy"

@@ -214,8 +214,15 @@ struct StatusPill: View {
 }
 
 /// Persistent marker shown whenever the app runs against the demo backend.
+/// `-CrushlyHideDemoBadge` hides it, only for capturing App Store screenshots of the demo fixture.
 struct DemoBadge: View {
+    private static let hidden = ProcessInfo.processInfo.arguments.contains("-CrushlyHideDemoBadge")
+
     var body: some View {
+        if !Self.hidden { badge }
+    }
+
+    private var badge: some View {
         Text("DEMO")
             .font(.system(.caption2, design: .monospaced).weight(.black))
             .tracking(1.5)

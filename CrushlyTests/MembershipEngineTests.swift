@@ -375,13 +375,13 @@ struct PointRuleTests {
 }
 
 struct SpaceZoneTests {
-    @Test func bundledZonesAreValidDraftsAndWellSeparated() throws {
+    @Test func bundledZonesAreFieldValidatedAndWellSeparated() throws {
         let zones = SpaceZoneCatalog.bundled()
         #expect(zones.map(\.slug) == ["upc-alumni-park-tommy-trojan", "upc-mccarthy-quad", "usc-village-great-lawn",
                                      "upc-iovine-young-hall"])
         for z in zones {
-            #expect(z.validationStatus == .draft, "\(z.slug) has not been walked; it must stay a draft")
-            #expect(!z.isUsable(allowDrafts: false), "drafts are unusable without allowDrafts")
+            #expect(z.validationStatus == .fieldValidated, "\(z.slug) was walked and must ship as field_validated")
+            #expect(z.isUsable(allowDrafts: false), "validated zones are usable without allowDrafts")
             for ring in z.shape.rings { #expect(ring.count >= 4 && ring.first == ring.last) }
         }
         for (i, a) in zones.enumerated() {

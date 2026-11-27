@@ -188,7 +188,11 @@ private struct RadarPeopleField: View {
     }
 
     private func stableSeed(for id: UUID) -> UInt64 {
-        id.uuidString.utf8.reduce(5381) { ($0 << 5) &+ $0 &+ UInt64($1) }
+        // djb2, then a splitmix64 finalizer so near-identical ids (the demo's sequential ones) still spread out.
+        var z = id.uuidString.utf8.reduce(5381) { ($0 << 5) &+ $0 &+ UInt64($1) }
+        z = (z ^ (z >> 30)) &* 0xBF58476D1CE4E5B9
+        z = (z ^ (z >> 27)) &* 0x94D049BB133111EB
+        return z ^ (z >> 31)
     }
 }
 

@@ -38,10 +38,11 @@ launch: it checks most of §1, the dev account, enabled zones and the photo buck
 
 ## 2. Campus spaces (field validation)
 
-All four shipped zones are **drafts** traced from OpenStreetMap outlines. None has been walked. **Until at least one
-zone is `field_validated`, nobody can join a space on the production backend.**
+All four shipped zones were traced from OpenStreetMap outlines and **walked and confirmed good by the owner (2026-11-26)**.
+They are `field_validated` in `campus_spaces.json`; apply [`supabase/ops/launch_zones.sql`](../supabase/ops/launch_zones.sql) to
+mark them validated in production and turn `allow_draft_spaces` off.
 
-- [ ] For each zone (`upc-alumni-park-tommy-trojan`, `upc-mccarthy-quad`, `usc-village-great-lawn`,
+- [x] *(Walked 2026-11-26.)* For each zone (`upc-alumni-park-tommy-trojan`, `upc-mccarthy-quad`, `usc-village-great-lawn`,
   `upc-iovine-young-hall`): walk the
   perimeter and the middle with a dev build, at different times of day, near building edges and under trees. Record
   inside / outside / uncertain verdicts and the reported accuracy.
@@ -51,7 +52,7 @@ zone is `field_validated`, nobody can join a space on the production backend.**
     only; cleared when closed. Rehearse first with the GPX routes in `Config/Locations/`. The dev project needs
     `allow_draft_spaces = true` (or a DEBUG build's bundled drafts) for the engine to use drafts; the overlay itself
     ignores that setting.
-- [ ] **Iovine and Young Hall is an indoor zone** (design §3.1a: `point` rule, 40 m accuracy limit). Confirm it is the
+- [x] *(Walked 2026-11-26.)* **Iovine and Young Hall is an indoor zone** (design §3.1a: `point` rule, 40 m accuracy limit). Confirm it is the
   right building (OSM: 3738 Watt Way), then walk every floor and the pavement right outside the walls. False INSIDE
   just outside the walls is the expected weakness of this rule; if it happens often, shrink the outline inward.
 - [ ] Adjust each polygon, keeping a ≥ 30 m gap between zones and stopping short of building entrances, residence-hall
@@ -118,7 +119,7 @@ zone is `field_validated`, nobody can join a space on the production backend.**
 
 ## 5. Legal and operations
 
-- [ ] Real Terms of Service and Privacy Policy. **Drafts** are in `Crushly/Resources/Legal/terms.md` and `privacy.md`:
+- [ ] *(2026-11-26: in-app placeholders filled (operator Preston Thoman, support@crushly.love, California / LA County, reports 2 yr, usage 12 mo, backups 14 d) and versions set to `2026-11-16`; public pages at https://crushly.love/privacy-policy/ and /app-support/. Lawyer review still recommended.)* Real Terms of Service and Privacy Policy. **Drafts** are in `Crushly/Resources/Legal/terms.md` and `privacy.md`:
   replace every `[[FILL-IN]]` (operator name, address, contact email, email provider, governing law, report/analytics/
   backup retention), have a lawyer review, then bump `LegalDocuments.termsVersion`/`privacyVersion`.
   `LegalDocuments.isPlaceholder` (and the in-app "Draft" banner) turns off automatically once no `[[` remains.
